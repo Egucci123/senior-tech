@@ -18,8 +18,7 @@ if (existsSync(distPath)) {
 }
 
 if (!process.env.ANTHROPIC_API_KEY) {
-  console.error("ERROR: ANTHROPIC_API_KEY not set in .env file");
-  process.exit(1);
+  console.warn("WARNING: ANTHROPIC_API_KEY not set — AI features will not work");
 }
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
