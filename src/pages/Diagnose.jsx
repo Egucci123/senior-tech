@@ -1,12 +1,20 @@
 import React, { useState, useRef, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { Loader2, Plus, Wrench } from "lucide-react";
+import { Loader2, Plus, Wrench, X, Copy, Check } from "lucide-react";
 import QuickChips from "../components/diagnose/QuickChips";
 import ChatBubble from "../components/diagnose/ChatBubble";
 import ChatInput from "../components/diagnose/ChatInput";
-import { AppState } from "../components/appState";
 import { TicketStore } from "../components/ticketStore";
 import { ManualsStore } from "../components/manualsStore";
+
+const MSGS_KEY = 'diag_messages_v2';
+const STARTED_KEY = 'diag_started_v2';
+const TICKET_KEY = 'diag_current_ticket_id';
+
+function loadMsgs()    { try { return JSON.parse(localStorage.getItem(MSGS_KEY) || 'null'); } catch { return null; } }
+function saveMsgs(m)   { localStorage.setItem(MSGS_KEY, JSON.stringify(m)); }
+function loadStarted() { return localStorage.getItem(STARTED_KEY) === 'true'; }
+function loadProfile() { try { return JSON.parse(localStorage.getItem('senior_tech_profile') || '{}'); } catch { return {}; } }
 
 const SYSTEM_PROMPT = `You are Senior Tech — a master HVAC technician with 20 years of field experience across residential and light commercial work. You have diagnosed thousands of systems and mentored dozens of younger techs.
 
@@ -338,24 +346,63 @@ const WELCOME_MSG = {
 };
 
 export default function DiagnosePage() {
-  const [messages, setMessages] = useState(() => AppState.get('diag_messages') || [WELCOME_MSG]);
+  const [messages, setMessages] = useState(() => loadMsgs() || [WELCOME_MSG]);
   const [isLoading, setIsLoading] = useState(false);
-  const [started, setStarted]     = useState(() => AppState.get('diag_started') || false);
-  const chatEndRef = useRef(null);
+  const [started, setStarted]     = useState(loadStarted);
+  const [invoiceModal, setInvoiceModal] = useState({ open: false, text: "", loading: false });
+  const [copied, setCopied] = useState(false);
+  const ticketIdRef = useRef(localStorage.getItem(TICKET_KEY) || null);
+  const chatEndRef  = useRef(null);
 
-  useEffect(() => { AppState.set('diag_messages', messages); }, [messages]);
-  useEffect(() => { AppState.set('diag_started',  started);  }, [started]);
+  // Persist messages to localStorage on every change
+  useEffect(() => { saveMsgs(messages); }, [messages]);
+  useEffect(() => { localStorage.setItem(STARTED_KEY, started); }, [started]);
+
+  // Auto-upsert ticket in TicketStore whenever messages change
+  useEffect(() => {
+    const userMsgs = messages.filter(m => m.role === "user");
+    if (userMsgs.length === 0) return;
+    if (!ticketIdRef.current) {
+      const id = Date.now().toString();
+      ticketIdRef.current = id;
+      localStorage.setItem(TICKET_KEY, id);
+      TicketStore.save({
+        id,
+        created_date: new Date().toISOString(),
+        messages,
+        status: "in_progress",
+        notes: "",
+        safety_flagged: false,
+        summary: null,
+      });
+    } else {
+      TicketStore.update(ticketIdRef.current, { messages });
+    }
+  }, [messages]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const buildPrompt = (newMsg) => {
-    const last5 = messages.slice(-5);
+  const buildPrompt = (newMsg, msgHistory) => {
+    const profile = loadProfile();
+    const years   = parseInt(profile.years, 10) || 5;
+    const unit    = profile.temp_unit === "C" ? "Celsius (°C)" : "Fahrenheit (°F)";
+    const techName = profile.name || "Tech";
+    const expLevel = years <= 3
+      ? "APPRENTICE (0-3 yrs) — explain the why behind every step"
+      : years <= 10
+        ? "JOURNEYMAN (4-10 yrs) — skip basics, focus on what to check and what it means"
+        : "MASTER (11+ yrs) — peer level, just key differentiators, no hand-holding";
+
+    const profileCtx = `\n\nTECH PROFILE — calibrate every response to this:\n- Name: ${techName}\n- Years in trade: ${years}\n- Level: ${expLevel}\n- Temperature unit: ${unit} — use this unit for ALL temperatures in every response`;
+
+    const src = msgHistory || messages;
+    const last5 = src.slice(-5);
     const history = [...last5, { role: "user", content: newMsg }]
       .map(m => `${m.role === "user" ? "Tech" : "Senior Tech"}: ${m.content}`)
       .join("\n\n");
-    return `${SYSTEM_PROMPT}\n\n--- CONVERSATION ---\n${history}\n\nSenior Tech:`;
+    return `${SYSTEM_PROMPT}${profileCtx}\n\n--- CONVERSATION ---\n${history}\n\nSenior Tech:`;
   };
 
   // Background: detect data plate in AI response and auto-fetch manuals
@@ -420,22 +467,24 @@ export default function DiagnosePage() {
   const sendMessage = async (text, imageUrls = []) => {
     setStarted(true);
     const userMsg = { role: "user", content: text, images: imageUrls };
-    setMessages(prev => [...prev, userMsg]);
+    const nextMsgs = [...messages, userMsg];
+    setMessages(nextMsgs);
     setIsLoading(true);
-    const prompt = buildPrompt(text);
-    const response = await base44.integrations.Core.InvokeLLM({
-      prompt,
-      model: "claude_sonnet_4_6",
-      max_tokens: 400,
-      ...(imageUrls.length > 0 ? { file_urls: imageUrls } : {}),
-    });
-    window.__trackCredit?.();
-    setMessages(prev => [...prev, { role: "assistant", content: response }]);
-    setIsLoading(false);
-    // If image was sent, check in background if unit data was extracted
-    if (imageUrls.length > 0) {
-      tryAutoFetchManuals(response);
+    try {
+      const prompt = buildPrompt(text, messages);
+      const response = await base44.integrations.Core.InvokeLLM({
+        prompt,
+        model: "claude_sonnet_4_6",
+        max_tokens: 400,
+        ...(imageUrls.length > 0 ? { file_urls: imageUrls } : {}),
+      });
+      window.__trackCredit?.();
+      setMessages(prev => [...prev, { role: "assistant", content: response }]);
+      if (imageUrls.length > 0) tryAutoFetchManuals(response);
+    } catch (err) {
+      setMessages(prev => [...prev, { role: "assistant", content: "Connection error — check your network and try again." }]);
     }
+    setIsLoading(false);
   };
 
   const handleChipSelect = async (chip) => {
@@ -443,38 +492,74 @@ export default function DiagnosePage() {
     const userMsg = { role: "user", content: `Customer complaint: ${chip}. Residential system.` };
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
-    const last5 = messages.slice(-5);
-    const history = [...last5, userMsg]
-      .map(m => `${m.role === "user" ? "Tech" : "Senior Tech"}: ${m.content}`)
-      .join("\n\n");
-    const prompt = `${SYSTEM_PROMPT}\n\n--- CONVERSATION ---\n${history}\n\nSenior Tech:`;
-    const response = await base44.integrations.Core.InvokeLLM({
-      prompt,
-      model: "claude_sonnet_4_6",
-      max_tokens: 150,
-    });
-    window.__trackCredit?.();
-    setMessages(prev => [...prev, { role: "assistant", content: response }]);
+    try {
+      const prompt = buildPrompt(`Customer complaint: ${chip}. Residential system.`);
+      const response = await base44.integrations.Core.InvokeLLM({
+        prompt,
+        model: "claude_sonnet_4_6",
+        max_tokens: 200,
+      });
+      window.__trackCredit?.();
+      setMessages(prev => [...prev, { role: "assistant", content: response }]);
+    } catch { /* silent */ }
     setIsLoading(false);
   };
 
-  const handleNewChat = async () => {
-    const userMessages = messages.filter(m => m.role === "user");
-    if (userMessages.length > 0) {
-      const safetyFlagged = messages.some(m =>
-        m.role === "assistant" && /safety hazard/i.test(m.content)
-      );
-      const ticketId = Date.now().toString();
-      TicketStore.save({
-        id: ticketId,
-        created_date: new Date().toISOString(),
-        messages,
-        status: "in_progress",
-        notes: "",
-        safety_hazard: safetyFlagged,
-        summary: null,
+  const handleGenerateInvoice = async () => {
+    setInvoiceModal({ open: true, text: "", loading: true });
+    try {
+      const transcript = messages
+        .map(m => `${m.role === "user" ? "Tech" : "Senior Tech"}: ${m.content}`)
+        .join("\n\n");
+      const profile = loadProfile();
+      const response = await base44.integrations.Core.InvokeLLM({
+        prompt: `You are a professional HVAC service writer. Based on the following diagnostic conversation between a technician and an AI assistant, write a customer-facing service invoice description.
+
+Format it exactly like this:
+---
+SERVICE DATE: [today's date]
+TECHNICIAN: ${profile.name || "HVAC Technician"}${profile.company ? `\nCOMPANY: ${profile.company}` : ""}
+
+EQUIPMENT:
+[Brand, model, serial number if mentioned. If unknown, write "See unit nameplate."]
+
+COMPLAINT:
+[One sentence — what the customer reported.]
+
+FINDINGS:
+[2-4 bullet points of what was found during diagnosis. Use plain language a homeowner understands. No jargon.]
+
+WORK PERFORMED:
+[Bullet list of actions taken. If still diagnosing, write "Diagnostic in progress — see technician notes."]
+
+RECOMMENDATIONS:
+[Any follow-up items, repairs needed, or parts to order. If none, write "None at this time."]
+
+NOTES:
+[Any safety concerns or urgent items flagged during the visit.]
+---
+
+Conversation:
+${transcript}`,
+        model: "claude_sonnet_4_6",
+        max_tokens: 500,
       });
-      // Background: extract unit + fault summary from conversation
+      setInvoiceModal({ open: true, text: response, loading: false });
+    } catch {
+      setInvoiceModal({ open: true, text: "Could not generate invoice — check your connection.", loading: false });
+    }
+  };
+
+  const handleCopyInvoice = () => {
+    navigator.clipboard.writeText(invoiceModal.text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleNewChat = async () => {
+    // Background: extract unit + fault summary for the current ticket
+    if (ticketIdRef.current && messages.filter(m => m.role === "user").length > 0) {
       try {
         const transcript = messages.slice(0, 12)
           .map(m => `${m.role === "user" ? "Tech" : "Senior Tech"}: ${m.content}`)
@@ -494,10 +579,12 @@ export default function DiagnosePage() {
           }
         });
         if (s && (s.brand || s.fault_code)) {
-          TicketStore.update(ticketId, { summary: s });
+          TicketStore.update(ticketIdRef.current, { summary: s });
         }
       } catch { /* silent */ }
     }
+    ticketIdRef.current = null;
+    localStorage.removeItem(TICKET_KEY);
     setMessages([WELCOME_MSG]);
     setStarted(false);
   };
@@ -623,7 +710,107 @@ export default function DiagnosePage() {
         </div>
       </div>
 
-      <ChatInput onSend={sendMessage} isLoading={isLoading} />
+      <ChatInput
+        onSend={sendMessage}
+        isLoading={isLoading}
+        onInvoice={started ? handleGenerateInvoice : null}
+        invoiceGenerating={invoiceModal.loading}
+      />
+
+      {/* Invoice Modal */}
+      {invoiceModal.open && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 200,
+          background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "flex-end", justifyContent: "center",
+        }} onClick={() => setInvoiceModal(s => ({ ...s, open: false }))}>
+          <div
+            style={{
+              width: "100%", maxWidth: 600,
+              background: "var(--bg-card)",
+              borderTop: "2px solid var(--blue)",
+              borderRadius: "16px 16px 0 0",
+              maxHeight: "80dvh", display: "flex", flexDirection: "column",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "14px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0,
+            }}>
+              <span style={{
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontSize: 15, fontWeight: 900, textTransform: "uppercase",
+                letterSpacing: "0.1em", color: "var(--blue)",
+              }}>INVOICE SUMMARY</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                {!invoiceModal.loading && invoiceModal.text && (
+                  <button
+                    onClick={handleCopyInvoice}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      padding: "6px 14px", borderRadius: 6,
+                      background: copied ? "rgba(76,175,80,0.15)" : "rgba(79,195,247,0.12)",
+                      border: `1px solid ${copied ? "var(--green)" : "var(--blue)"}`,
+                      color: copied ? "var(--green)" : "var(--blue)",
+                      fontFamily: "'Barlow Condensed', sans-serif",
+                      fontSize: 12, fontWeight: 700, textTransform: "uppercase",
+                      letterSpacing: "0.08em", cursor: "pointer",
+                    }}
+                  >
+                    {copied ? <><Check size={13} /> COPIED</> : <><Copy size={13} /> COPY</>}
+                  </button>
+                )}
+                <button
+                  onClick={() => setInvoiceModal(s => ({ ...s, open: false }))}
+                  style={{
+                    width: 32, height: 32, borderRadius: 6,
+                    background: "var(--bg-elevated)", border: "1px solid var(--border)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer", color: "var(--text-muted)",
+                  }}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+              {invoiceModal.loading ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "32px 0" }}>
+                  <Loader2 size={28} color="var(--blue)" style={{ animation: "spin 1s linear infinite" }} />
+                  <span style={{
+                    fontFamily: "'Barlow Condensed', sans-serif",
+                    fontSize: 13, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em",
+                  }}>GENERATING INVOICE...</span>
+                </div>
+              ) : (
+                <pre style={{
+                  fontFamily: "'Inter', sans-serif", fontSize: 13,
+                  color: "var(--text-primary)", lineHeight: 1.6,
+                  whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0,
+                }}>
+                  {invoiceModal.text}
+                </pre>
+              )}
+            </div>
+
+            {!invoiceModal.loading && invoiceModal.text && (
+              <div style={{ padding: "10px 16px 20px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
+                <p style={{
+                  fontFamily: "'Barlow Condensed', sans-serif",
+                  fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase",
+                  letterSpacing: "0.1em", textAlign: "center",
+                }}>
+                  TAP COPY → PASTE INTO YOUR INVOICING APP
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

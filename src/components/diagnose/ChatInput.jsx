@@ -1,8 +1,8 @@
 import React, { useState, useRef } from "react";
-import { Send, Loader2, Camera, Mic, X } from "lucide-react";
+import { Send, Loader2, Camera, Mic, X, FileText } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
-export default function ChatInput({ onSend, isLoading }) {
+export default function ChatInput({ onSend, isLoading, onInvoice, invoiceGenerating }) {
   const [text, setText]           = useState("");
   const [images, setImages]       = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -78,7 +78,7 @@ export default function ChatInput({ onSend, isLoading }) {
         </div>
       )}
 
-      {/* PHOTO + VOICE row */}
+      {/* PHOTO + VOICE + INVOICE row */}
       <div style={{ display: "flex", gap: 0, padding: "10px 12px 0" }}>
         <input ref={fileRef} type="file" accept="image/*" capture="environment"
           style={{ display: "none" }} onChange={handleImagePick} />
@@ -89,7 +89,7 @@ export default function ChatInput({ onSend, isLoading }) {
           className="btn-press"
           style={{
             flex: 1, height: 48,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             background: "var(--bg-elevated)",
             border: "1px solid var(--border)",
             borderRight: "none",
@@ -99,13 +99,13 @@ export default function ChatInput({ onSend, isLoading }) {
           }}
         >
           {uploading
-            ? <Loader2 size={16} color="var(--blue)" style={{ animation: "spin 1s linear infinite" }} />
-            : <Camera size={16} />}
+            ? <Loader2 size={15} color="var(--blue)" style={{ animation: "spin 1s linear infinite" }} />
+            : <Camera size={15} />}
           <span style={{
             fontFamily: "'Barlow Condensed', sans-serif",
-            fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em",
+            fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em",
           }}>
-            {uploading ? "UPLOADING..." : "PHOTO"}
+            {uploading ? "..." : "PHOTO"}
           </span>
         </button>
 
@@ -115,21 +115,46 @@ export default function ChatInput({ onSend, isLoading }) {
           className="btn-press"
           style={{
             flex: 1, height: 48,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             background: listening ? "rgba(79,195,247,0.12)" : "var(--bg-elevated)",
             border: "1px solid var(--border)",
-            borderLeft: "1px solid var(--border)",
-            borderRadius: "0 6px 6px 0",
+            borderLeft: "none", borderRight: "none",
             color: listening ? "var(--blue)" : "var(--text-secondary)",
             cursor: "pointer",
           }}
         >
-          <Mic size={16} style={listening ? { animation: "pulseBadge 1s ease-in-out infinite" } : {}} />
+          <Mic size={15} style={listening ? { animation: "pulseBadge 1s ease-in-out infinite" } : {}} />
           <span style={{
             fontFamily: "'Barlow Condensed', sans-serif",
-            fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em",
+            fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em",
           }}>
-            {listening ? "LISTENING..." : "VOICE"}
+            {listening ? "..." : "VOICE"}
+          </span>
+        </button>
+
+        <button
+          onClick={onInvoice}
+          disabled={!onInvoice || isLoading || invoiceGenerating}
+          className="btn-press"
+          style={{
+            flex: 1, height: 48,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            background: invoiceGenerating ? "rgba(79,195,247,0.12)" : "var(--bg-elevated)",
+            border: "1px solid var(--border)",
+            borderRadius: "0 6px 6px 0",
+            color: (!onInvoice || isLoading) ? "var(--text-muted)" : invoiceGenerating ? "var(--blue)" : "var(--text-secondary)",
+            cursor: onInvoice && !isLoading ? "pointer" : "not-allowed",
+            opacity: !onInvoice ? 0.45 : 1,
+          }}
+        >
+          {invoiceGenerating
+            ? <Loader2 size={15} color="var(--blue)" style={{ animation: "spin 1s linear infinite" }} />
+            : <FileText size={15} />}
+          <span style={{
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em",
+          }}>
+            INVOICE
           </span>
         </button>
       </div>
