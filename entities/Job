@@ -1,0 +1,108 @@
+{
+  "name": "Job",
+  "type": "object",
+  "properties": {
+    "job_type": {
+      "type": "string",
+      "description": "Type of service call"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "in_progress",
+        "resolved",
+        "follow_up",
+        "safety_flag"
+      ],
+      "default": "in_progress"
+    },
+    "unit_brand": {
+      "type": "string"
+    },
+    "unit_model": {
+      "type": "string"
+    },
+    "unit_serial": {
+      "type": "string"
+    },
+    "unit_type": {
+      "type": "string"
+    },
+    "unit_age": {
+      "type": "number"
+    },
+    "refrigerant_type": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "diagnosis": {
+      "type": "string"
+    },
+    "field_report": {
+      "type": "string"
+    },
+    "readings": {
+      "type": "object",
+      "description": "Gauge readings and calculated values"
+    },
+    "unit_info": {
+      "type": "object",
+      "description": "Full unit information from scan"
+    },
+    "chat_history": {
+      "type": "array",
+      "description": "Full diagnostic conversation"
+    },
+    "nameplate_image_url": {
+      "type": "string"
+    },
+    "gauge_image_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "safety_hazard": {
+      "type": "boolean",
+      "default": false
+    },
+    "confidence_level": {
+      "type": "string"
+    },
+    "parts_needed": {
+      "type": "string"
+    },
+    "tech_name": {
+      "type": "string"
+    },
+    "opened_documents": {
+      "type": "array",
+      "description": "Documents opened during this job for offline access",
+      "items": {
+        "type": "object",
+        "properties": {
+          "document_type": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "opened_at": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "job_type"
+  ]
+}

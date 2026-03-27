@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(unzip -l senior-tech-project.zip)",
+      "Bash(unzip -o senior-tech-project.zip -d senior-tech-extracted/)",
+      "Bash(npm install:*)",
+      "Bash(unzip -l \"C:/Users/egut/OneDrive/Documents/trendplate.zip\")"
+    ]
+  }
+}
