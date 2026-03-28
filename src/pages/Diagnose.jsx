@@ -569,9 +569,12 @@ export default function DiagnosePage() {
     const profileCtx = `\n\nTECH PROFILE — calibrate every response to this:\n- Name: ${techName}\n- Years in trade: ${years}\n- Level: ${expLevel}\n- Temperature unit: ${unit} — use this unit for ALL temperatures in every response`;
 
     const src = msgHistory || messages;
-    const last5 = src.slice(-5);
-    const history = [...last5, { role: "user", content: newMsg }]
-      .map(m => `${m.role === "user" ? "Tech" : "Senior Tech"}: ${m.content}`)
+    const last10 = src.slice(-10);
+    const history = [...last10, { role: "user", content: newMsg }]
+      .map(m => {
+        const photoNote = m.images?.length ? ' [sent photo]' : '';
+        return `${m.role === "user" ? "Tech" : "Senior Tech"}: ${m.content}${photoNote}`;
+      })
       .join("\n\n");
     return `${SYSTEM_PROMPT}${profileCtx}\n\n--- CONVERSATION ---\n${history}\n\nSenior Tech:`;
   };
@@ -646,7 +649,7 @@ export default function DiagnosePage() {
       const response = await base44.integrations.Core.InvokeLLM({
         prompt,
         model: "claude_sonnet_4_6",
-        max_tokens: 400,
+        max_tokens: 1200,
         ...(imageUrls.length > 0 ? { file_urls: imageUrls } : {}),
       });
       window.__trackCredit?.();
