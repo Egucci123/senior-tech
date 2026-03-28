@@ -1,6 +1,5 @@
 import React, { useState, useRef } from "react";
 import { Send, Loader2, Camera, Mic, X, FileText, RotateCcw } from "lucide-react";
-import { base44 } from "@/api/base44Client";
 
 export default function ChatInput({ onSend, isLoading, onInvoice, invoiceGenerating, onNewChat }) {
   const [text, setText]           = useState("");
@@ -16,14 +15,42 @@ export default function ChatInput({ onSend, isLoading, onInvoice, invoiceGenerat
     setImages([]);
   };
 
+  // Resize + compress image to max 1280px / JPEG 0.82 before converting to base64
+  const compressImage = (file) =>
+    new Promise((resolve) => {
+      const img = new Image();
+      const blobUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        const MAX = 1280;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+          else { width = Math.round(width * MAX / height); height = MAX; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(blobUrl);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = () => { URL.revokeObjectURL(blobUrl); resolve(null); };
+      img.src = blobUrl;
+    });
+
   const handleImagePick = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     e.target.value = "";
     setUploading(true);
-    const preview = URL.createObjectURL(file);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    setImages(prev => [...prev, { url: file_url, preview }]);
+    try {
+      const preview = URL.createObjectURL(file);
+      const compressed = await compressImage(file);
+      if (!compressed) throw new Error("Could not read image");
+      setImages(prev => [...prev, { url: compressed, preview }]);
+    } catch (err) {
+      alert("Could not load image — please try again.");
+    }
     setUploading(false);
   };
 
