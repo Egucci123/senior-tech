@@ -73,7 +73,7 @@ export default function Layout({ children, currentPageName }) {
       </header>
 
       {/* Page content */}
-      <div key={currentPageName} className="page-in"
+      <div className="page-in"
         style={{ paddingTop: 60, paddingBottom: hideNav ? 0 : 64 }}>
         {children}
       </div>

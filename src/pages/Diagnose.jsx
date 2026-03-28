@@ -10,8 +10,23 @@ const MSGS_KEY = 'diag_messages_v2';
 const STARTED_KEY = 'diag_started_v2';
 const TICKET_KEY = 'diag_current_ticket_id';
 
-function loadMsgs()    { try { return JSON.parse(localStorage.getItem(MSGS_KEY) || 'null'); } catch { return null; } }
-function saveMsgs(m)   { localStorage.setItem(MSGS_KEY, JSON.stringify(m)); }
+function loadMsgs() {
+  try { return JSON.parse(localStorage.getItem(MSGS_KEY) || 'null'); } catch { return null; }
+}
+function saveMsgs(m) {
+  try {
+    // Strip base64 image data before storing — images are large and blow the 5MB localStorage limit.
+    // The text conversation is preserved; only the raw image bytes are dropped on save.
+    const lean = m.map(msg =>
+      msg.images?.length
+        ? { ...msg, images: msg.images.map(() => '[photo]') }
+        : msg
+    );
+    localStorage.setItem(MSGS_KEY, JSON.stringify(lean));
+  } catch (e) {
+    console.warn('saveMsgs: could not persist messages', e);
+  }
+}
 function loadStarted() { return localStorage.getItem(STARTED_KEY) === 'true'; }
 function loadProfile() { try { return JSON.parse(localStorage.getItem('senior_tech_profile') || '{}'); } catch { return {}; } }
 

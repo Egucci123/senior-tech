@@ -61,8 +61,9 @@ export default function SettingsPage() {
     if (confirm("Wipe all saved jobs and manuals? This cannot be undone.")) {
       localStorage.removeItem("diag_tickets");
       localStorage.removeItem("saved_manuals");
-      localStorage.removeItem("diag_messages");
-      localStorage.removeItem("diag_started");
+      localStorage.removeItem("diag_messages_v2");
+      localStorage.removeItem("diag_started_v2");
+      localStorage.removeItem("diag_current_ticket_id");
     }
   };
 
