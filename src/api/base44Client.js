@@ -78,11 +78,12 @@ const InvokeLLM = async ({
   max_tokens = 400,
   file_urls = [],
   response_json_schema = null,
+  system = null,
 }) => {
   const res = await fetch("/api/llm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, model, max_tokens, file_urls, response_json_schema }),
+    body: JSON.stringify({ prompt, model, max_tokens, file_urls, response_json_schema, system }),
   });
   if (!res.ok) {
     const err = await res.text();

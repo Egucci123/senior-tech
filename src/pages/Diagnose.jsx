@@ -566,7 +566,8 @@ export default function DiagnosePage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const buildPrompt = (newMsg, msgHistory) => {
+  // Returns { system, userPrompt } separately so server can cache the static system prompt
+  const buildMessages = (newMsg, msgHistory) => {
     const profile = loadProfile();
     const years   = parseInt(profile.years, 10) || 5;
     const unit    = profile.temp_unit === "C" ? "Celsius (°C)" : "Fahrenheit (°F)";
@@ -577,11 +578,11 @@ export default function DiagnosePage() {
         ? "JOURNEYMAN (4-10 yrs) — skip basics, focus on what to check and what it means"
         : "MASTER (11+ yrs) — peer level, just key differentiators, no hand-holding";
 
-    let profileCtx = `\n\nTECH PROFILE — calibrate every response to this:\n- Name: ${techName}\n- Years in trade: ${years}\n- Level: ${expLevel}\n- Temperature unit: ${unit} — use this unit for ALL temperatures in every response`;
+    let ctx = `TECH PROFILE — calibrate every response to this:\n- Name: ${techName}\n- Years in trade: ${years}\n- Level: ${expLevel}\n- Temperature unit: ${unit} — use this unit for ALL temperatures in every response`;
 
     const dp = loadDataPlate();
     if (dp?.brand) {
-      profileCtx += `\n\nCURRENT UNIT — already read from data plate, NEVER ask for this info again:\n- Brand: ${dp.brand}${dp.model ? `\n- Model: ${dp.model}` : ''}${dp.serial ? `\n- Serial: ${dp.serial}` : ''}${dp.unit_type ? `\n- Type: ${dp.unit_type}` : ''}${dp.refrigerant_type ? `\n- Refrigerant: ${dp.refrigerant_type}` : ''}${dp.tonnage ? `\n- Tonnage: ${dp.tonnage}` : ''}${dp.voltage ? `\n- Voltage: ${dp.voltage}` : ''}`;
+      ctx += `\n\nCURRENT UNIT — already read from data plate, NEVER ask for this info again:\n- Brand: ${dp.brand}${dp.model ? `\n- Model: ${dp.model}` : ''}${dp.serial ? `\n- Serial: ${dp.serial}` : ''}${dp.unit_type ? `\n- Type: ${dp.unit_type}` : ''}${dp.refrigerant_type ? `\n- Refrigerant: ${dp.refrigerant_type}` : ''}${dp.tonnage ? `\n- Tonnage: ${dp.tonnage}` : ''}${dp.voltage ? `\n- Voltage: ${dp.voltage}` : ''}`;
     }
 
     const src = msgHistory || messages;
@@ -592,7 +593,13 @@ export default function DiagnosePage() {
         return `${m.role === "user" ? "Tech" : "Senior Tech"}: ${m.content}${photoNote}`;
       })
       .join("\n\n");
-    return `${SYSTEM_PROMPT}${profileCtx}\n\n--- CONVERSATION ---\n${history}\n\nSenior Tech:`;
+
+    return {
+      // SYSTEM_PROMPT is static — server will cache it (90% discount after first call)
+      system: SYSTEM_PROMPT,
+      // profileCtx + conversation go in the user message
+      userPrompt: `${ctx}\n\n--- CONVERSATION ---\n${history}\n\nSenior Tech:`,
+    };
   };
 
   // Background: detect data plate in AI response and auto-fetch manuals
@@ -600,7 +607,7 @@ export default function DiagnosePage() {
     try {
       const extraction = await base44.integrations.Core.InvokeLLM({
         prompt: `The following is a response from an HVAC diagnostic assistant after viewing an image. Did the assistant extract equipment nameplate or data plate information (brand, model, unit type, refrigerant)? If yes, return the extracted fields. If no nameplate/data plate was discussed, return {"found": false}.\n\nResponse:\n${aiResponse.slice(0, 1000)}`,
-        model: "claude_sonnet_4_6",
+        model: "claude_haiku_4_5",
         max_tokens: 200,
         response_json_schema: {
           type: "object",
@@ -666,11 +673,12 @@ export default function DiagnosePage() {
     setMessages(nextMsgs);
     setIsLoading(true);
     try {
-      const prompt = buildPrompt(text, messages);
+      const { system, userPrompt } = buildMessages(text, messages);
       const response = await base44.integrations.Core.InvokeLLM({
-        prompt,
+        prompt: userPrompt,
+        system,
         model: "claude_sonnet_4_6",
-        max_tokens: 1200,
+        max_tokens: 800,
         ...(imageUrls.length > 0 ? { file_urls: imageUrls } : {}),
       });
       window.__trackCredit?.();
@@ -743,7 +751,7 @@ ${transcript}`,
           .join("\n\n");
         const s = await base44.integrations.Core.InvokeLLM({
           prompt: `Extract structured info from this HVAC diagnostic conversation. Return JSON only. If a field isn't mentioned, return null for it.\n\n${transcript}`,
-          model: "claude_sonnet_4_6",
+          model: "claude_haiku_4_5",
           max_tokens: 150,
           response_json_schema: {
             type: "object",

@@ -33,7 +33,7 @@ function resolveModel(modelName) {
 }
 
 app.post("/api/llm", async (req, res) => {
-  const { prompt, model, max_tokens = 400, file_urls = [], response_json_schema } = req.body;
+  const { prompt, model, max_tokens = 400, file_urls = [], response_json_schema, system } = req.body;
 
   try {
     const content = [];
@@ -55,14 +55,21 @@ app.post("/api/llm", async (req, res) => {
 
     content.push({ type: "text", text: prompt });
 
-    const systemPrompt = response_json_schema
-      ? "You must respond with valid JSON only. No markdown code blocks, no explanation. Return only the raw JSON object."
-      : undefined;
+    // Build system parameter:
+    // - If JSON call: plain string instruction
+    // - If system prompt provided: array with cache_control for 90% discount on repeated system prompts
+    // - Otherwise: no system prompt
+    let systemParam;
+    if (response_json_schema) {
+      systemParam = "You must respond with valid JSON only. No markdown code blocks, no explanation. Return only the raw JSON object.";
+    } else if (system) {
+      systemParam = [{ type: "text", text: system, cache_control: { type: "ephemeral" } }];
+    }
 
     const message = await anthropic.messages.create({
       model: resolveModel(model),
       max_tokens: Math.min(max_tokens, 4096),
-      ...(systemPrompt ? { system: systemPrompt } : {}),
+      ...(systemParam ? { system: systemParam } : {}),
       messages: [{ role: "user", content }],
     });
 
