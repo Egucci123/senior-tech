@@ -1,11 +1,12 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Microscope, History, Settings } from "lucide-react";
+import { Microscope, History, BookOpen, Settings } from "lucide-react";
 
 const NAV_ITEMS = [
   { name: "DIAGNOSE", page: "Diagnose", Icon: Microscope },
   { name: "HISTORY",  page: "History",  Icon: History },
+  { name: "MANUALS",  page: "Manuals",  Icon: BookOpen },
   { name: "SETTINGS", page: "Settings", Icon: Settings },
 ];
 

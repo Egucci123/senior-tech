@@ -339,12 +339,10 @@ READING WIRING DIAGRAMS FAST:
 
 
 
-function makeWelcome(profile) {
-  const first = (profile?.name || "").trim().split(/\s+/)[0] || "";
-  const greeting = first ? `HELLO, ${first.toUpperCase()}` : "HELLO";
+function makeWelcome() {
   return {
     role: "assistant",
-    content: `**${greeting} — Senior Tech here.** Ready to diagnose.\n\nDescribe the issue or send a photo of the data plate to get started.`,
+    content: "**Senior Tech here.** Ready to diagnose.\n\nDescribe the issue or send a photo of the data plate to get started. If you send a data plate photo, I'll automatically pull up the installation manual, service manual, and wiring diagram — they'll be saved in your **Manuals** tab for quick access on the job.",
   };
 }
 
@@ -496,8 +494,7 @@ export default function DiagnosePage() {
   const needsOnboarding = !profile?.name?.trim() || !localStorage.getItem("onboarding_done");
 
   const [messages, setMessages] = useState(() => {
-    if (!loadProfile()?.name?.trim()) return [makeWelcome(null)];
-    return loadMsgs() || [makeWelcome(loadProfile())];
+    return loadMsgs() || [makeWelcome()];
   });
   const [isLoading, setIsLoading] = useState(false);
   const [started, setStarted]     = useState(loadStarted);
@@ -508,7 +505,7 @@ export default function DiagnosePage() {
 
   const handleOnboardingComplete = (newProfile) => {
     setProfile(newProfile);
-    const welcome = makeWelcome(newProfile);
+    const welcome = makeWelcome();
     setMessages([welcome]);
     saveMsgs([welcome]);
   };
@@ -745,7 +742,7 @@ ${transcript}`,
     ticketIdRef.current = null;
     localStorage.removeItem(TICKET_KEY);
     const p = loadProfile();
-    const welcome = makeWelcome(p);
+    const welcome = makeWelcome();
     setMessages([welcome]);
     saveMsgs([welcome]);
     setStarted(false);
