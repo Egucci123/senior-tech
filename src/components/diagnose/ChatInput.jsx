@@ -1,8 +1,8 @@
 import React, { useState, useRef } from "react";
-import { Send, Loader2, Camera, Mic, X, FileText } from "lucide-react";
+import { Send, Loader2, Camera, Mic, X, FileText, RotateCcw } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
-export default function ChatInput({ onSend, isLoading, onInvoice, invoiceGenerating }) {
+export default function ChatInput({ onSend, isLoading, onInvoice, invoiceGenerating, onNewChat }) {
   const [text, setText]           = useState("");
   const [images, setImages]       = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -80,7 +80,7 @@ export default function ChatInput({ onSend, isLoading, onInvoice, invoiceGenerat
 
       {/* PHOTO + VOICE + INVOICE row */}
       <div style={{ display: "flex", gap: 0, padding: "10px 12px 0" }}>
-        <input ref={fileRef} type="file" accept="image/*" capture="environment"
+        <input ref={fileRef} type="file" accept="image/*"
           style={{ display: "none" }} onChange={handleImagePick} />
 
         <button
@@ -193,6 +193,26 @@ export default function ChatInput({ onSend, isLoading, onInvoice, invoiceGenerat
             }}
           />
         </div>
+
+        {onNewChat && (
+          <button
+            onClick={onNewChat}
+            disabled={isLoading}
+            className="btn-press"
+            title="End Diagnose"
+            style={{
+              flexShrink: 0, width: 48, height: 48, borderRadius: 6,
+              border: "1px solid rgba(244,67,54,0.35)",
+              background: "rgba(244,67,54,0.08)",
+              color: "var(--red)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: isLoading ? "not-allowed" : "pointer",
+              transition: "all 0.15s",
+            }}
+          >
+            <RotateCcw size={17} strokeWidth={2} />
+          </button>
+        )}
 
         <button
           onClick={handleSend}

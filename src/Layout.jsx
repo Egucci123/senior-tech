@@ -1,10 +1,9 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Home, Microscope, History, Settings } from "lucide-react";
+import { Microscope, History, Settings } from "lucide-react";
 
 const NAV_ITEMS = [
-  { name: "HOME",     page: "Home",     Icon: Home },
   { name: "DIAGNOSE", page: "Diagnose", Icon: Microscope },
   { name: "HISTORY",  page: "History",  Icon: History },
   { name: "SETTINGS", page: "Settings", Icon: Settings },
@@ -47,14 +46,6 @@ export default function Layout({ children, currentPageName }) {
             }}>
               SENIOR TECH
             </div>
-            {currentPageName === "Home" && (
-              <div style={{
-                fontFamily: "'Inter', sans-serif",
-                fontSize: 10, color: "var(--text-muted)", lineHeight: 1, marginTop: 1,
-              }}>
-                Your most experienced tech
-              </div>
-            )}
             {currentPageName === "Diagnose" && (
               <div style={{
                 fontFamily: "'Barlow Condensed', sans-serif",

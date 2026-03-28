@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { Loader2, Plus, Wrench, X, Copy, Check } from "lucide-react";
-import QuickChips from "../components/diagnose/QuickChips";
+import { Loader2, Wrench, X, Copy, Check } from "lucide-react";
 import ChatBubble from "../components/diagnose/ChatBubble";
 import ChatInput from "../components/diagnose/ChatInput";
 import { TicketStore } from "../components/ticketStore";
@@ -340,19 +339,186 @@ READING WIRING DIAGRAMS FAST:
 
 
 
-const WELCOME_MSG = {
-  role: "assistant",
-  content: "**Senior Tech here.** Ready to diagnose.\n\nBefore we start — how many years have you been in the trade? This helps me calibrate my answers to your experience level.\n\nOr tap a common call type above to jump right in."
-};
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h >= 5  && h < 12) return "GOOD MORNING";
+  if (h >= 12 && h < 17) return "GOOD AFTERNOON";
+  if (h >= 17 && h < 22) return "GOOD EVENING";
+  return "GOOD NIGHT";
+}
+
+function makeWelcome(profile) {
+  const first = (profile?.name || "").trim().split(/\s+/)[0] || "";
+  const greeting = first ? `${getGreeting()}, ${first.toUpperCase()}` : `${getGreeting()}`;
+  return {
+    role: "assistant",
+    content: `**${greeting} — Senior Tech here.** Ready to diagnose.\n\nDescribe the issue or send a photo of the data plate to get started.`,
+  };
+}
+
+// Onboarding form shown on first launch
+function OnboardingScreen({ onComplete }) {
+  const [form, setForm] = useState({ name: "", years: "", company: "", temp_unit: "F" });
+  const [err, setErr]   = useState("");
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSubmit = () => {
+    if (!form.name.trim()) { setErr("Please enter your name."); return; }
+    const profile = {
+      name:      form.name.trim(),
+      title:     "HVAC TECHNICIAN",
+      company:   form.company.trim(),
+      years:     form.years || "1",
+      temp_unit: form.temp_unit,
+    };
+    localStorage.setItem("senior_tech_profile", JSON.stringify(profile));
+    onComplete(profile);
+  };
+
+  const fieldStyle = {
+    width: "100%", boxSizing: "border-box",
+    background: "var(--bg-elevated)", border: "1px solid var(--border)",
+    borderRadius: 6, padding: "13px 14px",
+    color: "var(--text-primary)", fontFamily: "'Inter', sans-serif", fontSize: 15,
+    outline: "none",
+  };
+  const labelStyle = {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 11, fontWeight: 700, textTransform: "uppercase",
+    letterSpacing: "0.12em", color: "var(--text-muted)", marginBottom: 6, display: "block",
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 300,
+      background: "var(--bg)", display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center", padding: "24px 24px 40px",
+      overflowY: "auto",
+    }}>
+      {/* Logo */}
+      <div style={{ marginBottom: 32, textAlign: "center" }}>
+        <div className="hexagon" style={{
+          width: 72, height: 72, background: "rgba(79,195,247,0.12)",
+          border: "1px solid rgba(79,195,247,0.3)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          margin: "0 auto 14px",
+        }}>
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+          </svg>
+        </div>
+        <div style={{
+          fontFamily: "'Barlow Condensed', sans-serif",
+          fontSize: 28, fontWeight: 900, color: "var(--blue)",
+          textTransform: "uppercase", letterSpacing: "0.04em", lineHeight: 1,
+        }}>SENIOR TECH</div>
+        <div style={{
+          fontFamily: "'Barlow Condensed', sans-serif",
+          fontSize: 12, color: "var(--text-muted)",
+          textTransform: "uppercase", letterSpacing: "0.14em", marginTop: 4,
+        }}>SET UP YOUR PROFILE</div>
+      </div>
+
+      <div style={{ width: "100%", maxWidth: 400, display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Name */}
+        <div>
+          <label style={labelStyle}>FULL NAME *</label>
+          <input
+            style={fieldStyle} placeholder="First Last"
+            value={form.name} onChange={e => set("name", e.target.value)}
+            onFocus={e => { e.target.style.borderColor = "var(--blue)"; e.target.style.boxShadow = "0 0 0 2px rgba(79,195,247,0.12)"; }}
+            onBlur={e =>  { e.target.style.borderColor = "var(--border)"; e.target.style.boxShadow = "none"; }}
+          />
+        </div>
+
+        {/* Company */}
+        <div>
+          <label style={labelStyle}>COMPANY NAME</label>
+          <input
+            style={fieldStyle} placeholder="Your company (optional)"
+            value={form.company} onChange={e => set("company", e.target.value)}
+            onFocus={e => { e.target.style.borderColor = "var(--blue)"; e.target.style.boxShadow = "0 0 0 2px rgba(79,195,247,0.12)"; }}
+            onBlur={e =>  { e.target.style.borderColor = "var(--border)"; e.target.style.boxShadow = "none"; }}
+          />
+        </div>
+
+        {/* Years */}
+        <div>
+          <label style={labelStyle}>YEARS IN THE TRADE</label>
+          <input
+            style={fieldStyle} placeholder="e.g. 12" type="number" min="0" max="50"
+            value={form.years} onChange={e => set("years", e.target.value)}
+            onFocus={e => { e.target.style.borderColor = "var(--blue)"; e.target.style.boxShadow = "0 0 0 2px rgba(79,195,247,0.12)"; }}
+            onBlur={e =>  { e.target.style.borderColor = "var(--border)"; e.target.style.boxShadow = "none"; }}
+          />
+        </div>
+
+        {/* Temp unit */}
+        <div>
+          <label style={labelStyle}>TEMPERATURE UNIT</label>
+          <div style={{ display: "flex", gap: 10 }}>
+            {["F", "C"].map(u => (
+              <button key={u} onClick={() => set("temp_unit", u)} style={{
+                flex: 1, height: 48, borderRadius: 6, cursor: "pointer",
+                border: `1px solid ${form.temp_unit === u ? "var(--blue)" : "var(--border)"}`,
+                background: form.temp_unit === u ? "rgba(79,195,247,0.12)" : "var(--bg-elevated)",
+                color: form.temp_unit === u ? "var(--blue)" : "var(--text-muted)",
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontSize: 16, fontWeight: 700,
+              }}>
+                °{u} {u === "F" ? "FAHRENHEIT" : "CELSIUS"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {err && (
+          <div style={{
+            fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12,
+            color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.08em",
+          }}>{err}</div>
+        )}
+
+        <button
+          onClick={handleSubmit}
+          style={{
+            width: "100%", height: 52, borderRadius: 6, border: "none",
+            background: "var(--blue)", color: "#0f0f0f", cursor: "pointer",
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: 16, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em",
+            boxShadow: "0 0 20px rgba(79,195,247,0.25)",
+            marginTop: 4,
+          }}
+        >
+          START DIAGNOSING
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function DiagnosePage() {
-  const [messages, setMessages] = useState(() => loadMsgs() || [WELCOME_MSG]);
+  const [profile, setProfile] = useState(loadProfile);
+  const needsOnboarding = !profile?.name?.trim();
+
+  const [messages, setMessages] = useState(() => {
+    if (!loadProfile()?.name?.trim()) return [makeWelcome(null)];
+    return loadMsgs() || [makeWelcome(loadProfile())];
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [started, setStarted]     = useState(loadStarted);
   const [invoiceModal, setInvoiceModal] = useState({ open: false, text: "", loading: false });
   const [copied, setCopied] = useState(false);
   const ticketIdRef = useRef(localStorage.getItem(TICKET_KEY) || null);
   const chatEndRef  = useRef(null);
+
+  const handleOnboardingComplete = (newProfile) => {
+    setProfile(newProfile);
+    const welcome = makeWelcome(newProfile);
+    setMessages([welcome]);
+    saveMsgs([welcome]);
+  };
 
   // Persist messages to localStorage on every change
   useEffect(() => { saveMsgs(messages); }, [messages]);
@@ -585,34 +751,21 @@ ${transcript}`,
     }
     ticketIdRef.current = null;
     localStorage.removeItem(TICKET_KEY);
-    setMessages([WELCOME_MSG]);
+    const p = loadProfile();
+    const welcome = makeWelcome(p);
+    setMessages([welcome]);
+    saveMsgs([welcome]);
     setStarted(false);
   };
 
+  if (needsOnboarding) {
+    return <OnboardingScreen onComplete={handleOnboardingComplete} />;
+  }
+
+  const firstName = (profile?.name || "").trim().split(/\s+/)[0] || "";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 124px)" }}>
-
-      {/* Toolbar: quick chips + new job button */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 8,
-        borderBottom: "1px solid var(--border)", flexShrink: 0,
-        paddingRight: 12,
-      }}>
-        <QuickChips onSelect={handleChipSelect} />
-        {started && (
-          <button onClick={handleNewChat} className="btn-press" style={{
-            flexShrink: 0, display: "flex", alignItems: "center", gap: 5,
-            padding: "7px 13px", borderRadius: 6,
-            border: "1px solid var(--border)",
-            background: "transparent", color: "var(--text-secondary)",
-            fontFamily: "'Barlow Condensed', sans-serif",
-            fontSize: 12, fontWeight: 700,
-            letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer",
-          }}>
-            <Plus size={13} /> NEW JOB
-          </button>
-        )}
-      </div>
 
       {/* Chat area */}
       <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
@@ -647,14 +800,21 @@ ${transcript}`,
           </div>
           <div style={{
             fontFamily: "'Barlow Condensed', sans-serif",
-            fontSize: 28, fontWeight: 900, color: "var(--text-primary)",
+            fontSize: 13, fontWeight: 700, color: "var(--text-muted)",
+            textTransform: "uppercase", letterSpacing: "0.18em", marginBottom: 4,
+          }}>
+            {getGreeting()}{firstName ? `, ${firstName.toUpperCase()}` : ""}
+          </div>
+          <div style={{
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: 26, fontWeight: 900, color: "var(--text-primary)",
             textTransform: "uppercase", letterSpacing: "0.04em", lineHeight: 1,
           }}>
             SENIOR TECH
           </div>
           <div style={{
             fontFamily: "'Barlow Condensed', sans-serif",
-            fontSize: 12, fontWeight: 600, color: "var(--blue)",
+            fontSize: 11, fontWeight: 600, color: "var(--blue)",
             textTransform: "uppercase", letterSpacing: "0.14em", marginTop: 4,
           }}>
             20 YEARS FIELD EXPERIENCE
@@ -715,6 +875,7 @@ ${transcript}`,
         isLoading={isLoading}
         onInvoice={started ? handleGenerateInvoice : null}
         invoiceGenerating={invoiceModal.loading}
+        onNewChat={started ? handleNewChat : null}
       />
 
       {/* Invoice Modal */}
