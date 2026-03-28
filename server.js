@@ -92,6 +92,41 @@ app.post("/api/llm", async (req, res) => {
   }
 });
 
+// Manual finder — searches ManualsLib for the real product page for a specific unit
+app.get("/api/find-manual", async (req, res) => {
+  const { brand, model } = req.query;
+  if (!brand) return res.json({ pages: [], fallback: null });
+
+  const brandSlug = brand.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+  const fallback = `https://www.manualslib.com/brand/${brandSlug}/`;
+
+  try {
+    const q = encodeURIComponent(`${brand} ${model || ''}`.trim());
+    const searchUrl = `https://www.manualslib.com/search.php?q=${q}`;
+
+    const resp = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (!resp.ok) return res.json({ pages: [], fallback });
+
+    const html = await resp.text();
+
+    // Extract unique product page URLs from search results
+    const matches = [...html.matchAll(/href="(\/products\/[^"]+\.html)"/g)];
+    const pages = [...new Set(matches.map(m => `https://www.manualslib.com${m[1]}`))].slice(0, 4);
+
+    res.json({ pages, fallback: pages.length === 0 ? fallback : null });
+  } catch {
+    res.json({ pages: [], fallback });
+  }
+});
+
 // SPA fallback — serve index.html for all non-API routes
 if (existsSync(distPath)) {
   app.get("*", (req, res) => {

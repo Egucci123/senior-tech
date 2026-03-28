@@ -453,21 +453,47 @@ export default function DiagnosePage() {
       saveDataPlate(extraction);
       setDataPlate(extraction);
 
-      // Use Google search links — always return results, surface PDFs from all sources
       const brand = extraction.brand.trim();
       const model = extraction.model?.trim() || '';
       const base = `${brand}${model ? ' ' + model : ''}`.trim();
-      const qInstall = encodeURIComponent(`${base} installation manual filetype:pdf`);
-      const qService = encodeURIComponent(`${base} service manual filetype:pdf`);
-      const qWiring  = encodeURIComponent(`${base} wiring diagram filetype:pdf`);
-      const qAll     = encodeURIComponent(`${base} manual site:manualslib.com OR site:hvac.com OR filetype:pdf`);
 
-      const documents = [
-        { type: "All Manuals",         title: `${base} — All Manuals`,         url: `https://www.google.com/search?q=${qAll}`,     source: "Google" },
-        { type: "Installation Manual", title: `${base} — Installation Manual`, url: `https://www.google.com/search?q=${qInstall}`, source: "Google" },
-        { type: "Service Manual",      title: `${base} — Service Manual`,      url: `https://www.google.com/search?q=${qService}`, source: "Google" },
-        { type: "Wiring Diagram",      title: `${base} — Wiring Diagram`,      url: `https://www.google.com/search?q=${qWiring}`,  source: "Google" },
-      ];
+      // Ask the server to search ManualsLib for the real product page
+      let documents = [];
+      try {
+        const manualRes = await fetch(
+          `/api/find-manual?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`
+        );
+        const { pages, fallback } = await manualRes.json();
+
+        if (pages.length > 0) {
+          // Real product pages found on ManualsLib — link directly to them
+          pages.forEach((url, i) => {
+            documents.push({
+              type: i === 0 ? "All Manuals" : `Manual ${i + 1}`,
+              title: `${base} — ManualsLib${pages.length > 1 ? ` (result ${i + 1})` : ''}`,
+              url,
+              source: "ManualsLib",
+            });
+          });
+        } else if (fallback) {
+          // Brand page on ManualsLib — always has real manuals, user finds their model
+          documents.push({
+            type: "All Manuals",
+            title: `${brand} — Browse All Manuals`,
+            url: fallback,
+            source: "ManualsLib",
+          });
+        }
+      } catch { /* silent — fall through to Google fallback */ }
+
+      // Always add a Google PDF search as backup
+      const qPdf = encodeURIComponent(`${base} installation manual filetype:pdf`);
+      documents.push({
+        type: "Installation Manual",
+        title: `${base} — Google PDF Search`,
+        url: `https://www.google.com/search?q=${qPdf}`,
+        source: "Google",
+      });
 
       // Add direct manufacturer resource link
       const bl = brand.toLowerCase();
