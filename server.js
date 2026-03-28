@@ -92,38 +92,45 @@ app.post("/api/llm", async (req, res) => {
   }
 });
 
-// Manual finder — searches ManualsLib for the real product page for a specific unit
+// Manual finder — uses AI web search to find real manual pages for a specific unit
 app.get("/api/find-manual", async (req, res) => {
   const { brand, model } = req.query;
-  if (!brand) return res.json({ pages: [], fallback: null });
+  if (!brand) return res.json({ manuals: [] });
 
+  const unitName = `${brand}${model ? ' ' + model : ''}`.trim();
   const brandSlug = brand.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
-  const fallback = `https://www.manualslib.com/brand/${brandSlug}/`;
 
   try {
-    const q = encodeURIComponent(`${brand} ${model || ''}`.trim());
-    const searchUrl = `https://www.manualslib.com/search.php?q=${q}`;
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 800,
+      tools: [{ type: "web_search_20250305", name: "web_search" }],
+      messages: [{
+        role: "user",
+        content: `Search manualslib.com for the ${unitName} HVAC unit manuals. Find direct page URLs for: installation manual, service manual, and wiring diagram. Return ONLY a JSON array, no other text:\n[{"type":"Installation Manual","title":"...","url":"https://www.manualslib.com/..."},{"type":"Service Manual","title":"...","url":"https://www.manualslib.com/..."},{"type":"Wiring Diagram","title":"...","url":"https://www.manualslib.com/..."}]\nOnly include real URLs from actual search results.`
+      }]
+    }, { headers: { 'anthropic-beta': 'web-search-2025-03-05' } });
 
-    const resp = await fetch(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-      signal: AbortSignal.timeout(6000),
-    });
-
-    if (!resp.ok) return res.json({ pages: [], fallback });
-
-    const html = await resp.text();
-
-    // Extract unique product page URLs from search results
-    const matches = [...html.matchAll(/href="(\/products\/[^"]+\.html)"/g)];
-    const pages = [...new Set(matches.map(m => `https://www.manualslib.com${m[1]}`))].slice(0, 4);
-
-    res.json({ pages, fallback: pages.length === 0 ? fallback : null });
-  } catch {
-    res.json({ pages: [], fallback });
+    const textBlock = message.content.find(b => b.type === 'text');
+    if (textBlock) {
+      const cleaned = textBlock.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+      try {
+        const manuals = JSON.parse(cleaned);
+        if (Array.isArray(manuals) && manuals.length > 0) {
+          return res.json({ manuals });
+        }
+      } catch {}
+      // Fall back to extracting any manualslib URLs from the text
+      const urls = [...textBlock.text.matchAll(/https?:\/\/[^\s"'<>)]*manualslib[^\s"'<>)]*/gi)]
+        .map(m => m[0]).filter((u, i, a) => a.indexOf(u) === i).slice(0, 4);
+      if (urls.length > 0) {
+        return res.json({ manuals: urls.map((url, i) => ({ type: `Manual ${i + 1}`, title: url, url })) });
+      }
+    }
+    res.json({ manuals: [], fallback: `https://www.manualslib.com/brand/${brandSlug}/` });
+  } catch (err) {
+    console.error('find-manual error:', err.message);
+    res.json({ manuals: [], fallback: `https://www.manualslib.com/brand/${brandSlug}/` });
   }
 });
 

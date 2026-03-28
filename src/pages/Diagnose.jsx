@@ -457,46 +457,20 @@ export default function DiagnosePage() {
       const model = extraction.model?.trim() || '';
       const base = `${brand}${model ? ' ' + model : ''}`.trim();
 
-      // Ask the server to search ManualsLib for the real product page
+      // Ask the server to find real manual pages using AI web search
       let documents = [];
       try {
         const manualRes = await fetch(
           `/api/find-manual?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`
         );
-        const { pages, fallback } = await manualRes.json();
+        const { manuals, fallback } = await manualRes.json();
 
-        if (pages.length > 0) {
-          // Real product pages found on ManualsLib — link directly to them
-          pages.forEach((url, i) => {
-            documents.push({
-              type: i === 0 ? "All Manuals" : `Manual ${i + 1}`,
-              title: `${base} — ManualsLib${pages.length > 1 ? ` (result ${i + 1})` : ''}`,
-              url,
-              source: "ManualsLib",
-            });
-          });
+        if (manuals?.length > 0) {
+          documents = manuals.map(m => ({ ...m, source: "ManualsLib" }));
         } else if (fallback) {
-          // Brand page on ManualsLib — always has real manuals, user finds their model
-          documents.push({
-            type: "All Manuals",
-            title: `${brand} — Browse All Manuals`,
-            url: fallback,
-            source: "ManualsLib",
-          });
+          documents.push({ type: "All Manuals", title: `${brand} — Browse Manuals`, url: fallback, source: "ManualsLib" });
         }
-      } catch { /* silent — fall through to Google fallback */ }
-
-      // Targeted Google search scoped to ManualsLib — finds exact product page as first result
-      const qSite    = encodeURIComponent(`site:manualslib.com ${base}`);
-      const qInstall = encodeURIComponent(`site:manualslib.com ${base} installation`);
-      const qService = encodeURIComponent(`site:manualslib.com ${base} service`);
-      const qWiring  = encodeURIComponent(`site:manualslib.com ${base} wiring`);
-      documents.push(
-        { type: "All Manuals",         title: `${base} — Find on ManualsLib`,        url: `https://www.google.com/search?q=${qSite}`,    source: "ManualsLib" },
-        { type: "Installation Manual", title: `${base} — Installation Manual`,        url: `https://www.google.com/search?q=${qInstall}`, source: "ManualsLib" },
-        { type: "Service Manual",      title: `${base} — Service Manual`,             url: `https://www.google.com/search?q=${qService}`, source: "ManualsLib" },
-        { type: "Wiring Diagram",      title: `${base} — Wiring Diagram`,             url: `https://www.google.com/search?q=${qWiring}`,  source: "ManualsLib" }
-      );
+      } catch { /* silent */ }
 
       // Add direct manufacturer resource link
       const bl = brand.toLowerCase();
