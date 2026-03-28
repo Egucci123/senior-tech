@@ -39,18 +39,18 @@ export default function ChatInput({ onSend, isLoading, onInvoice, invoiceGenerat
     });
 
   const handleImagePick = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
-    e.target.value = "";
     setUploading(true);
     try {
-      const preview = URL.createObjectURL(file);
       const compressed = await compressImage(file);
       if (!compressed) throw new Error("Could not read image");
-      setImages(prev => [...prev, { url: compressed, preview }]);
-    } catch (err) {
+      // Use compressed data URL for both display and sending — avoids iOS PWA blob URL issues
+      setImages(prev => [...prev, { url: compressed, preview: compressed }]);
+    } catch {
       alert("Could not load image — please try again.");
     }
+    e.target.value = "";
     setUploading(false);
   };
 

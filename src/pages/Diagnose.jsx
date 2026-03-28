@@ -30,6 +30,11 @@ function saveMsgs(m) {
 function loadStarted() { return localStorage.getItem(STARTED_KEY) === 'true'; }
 function loadProfile() { try { return JSON.parse(localStorage.getItem('senior_tech_profile') || '{}'); } catch { return {}; } }
 
+const DATA_PLATE_KEY = 'diag_data_plate';
+function loadDataPlate() { try { return JSON.parse(localStorage.getItem(DATA_PLATE_KEY) || 'null'); } catch { return null; } }
+function saveDataPlate(d) { try { localStorage.setItem(DATA_PLATE_KEY, JSON.stringify(d)); } catch {} }
+function clearDataPlate() { localStorage.removeItem(DATA_PLATE_KEY); }
+
 const SYSTEM_PROMPT = `You are Senior Tech — a master HVAC technician with 20 years of field experience across residential and light commercial work. You have diagnosed thousands of systems and mentored dozens of younger techs.
 
 Your personality:
@@ -350,7 +355,12 @@ READING WIRING DIAGRAMS FAST:
 - To find a fault fast: identify the load that isn't working, trace backward toward L1, voltage drop test each component in series. The component reading full supply voltage across it is OPEN and is the fault.
 - For control circuits: trace from contactor coil backward through 24V circuit — thermostat Y, time delays, lockout relays, pressure switches. First component where voltage drops off is open or its upstream condition is holding it open.
 - Fault codes on multi-stage/variable equipment: ALWAYS read the fault history oldest-to-newest. The first fault caused the lockout. Subsequent faults are consequences. Never start with the most recent fault code.
-- On variable/communicating equipment: verify all DIP switch settings match system design before diagnosing the refrigerant circuit.`;
+- On variable/communicating equipment: verify all DIP switch settings match system design before diagnosing the refrigerant circuit.
+
+RESPONSE DISCIPLINE — NON-NEGOTIABLE:
+- Never ask for more than ONE measurement or reading at a time. Ask for the single most critical value needed right now. Get their answer. Then ask for the next if needed.
+- One question per response. Always. No exceptions.
+- Never present a list of things for the tech to go check all at once — pick the most important one and send them there first.`;
 
 
 
@@ -506,7 +516,8 @@ function OnboardingScreen({ onComplete }) {
 
 export default function DiagnosePage() {
   const [profile, setProfile] = useState(loadProfile);
-  const needsOnboarding = !profile?.name?.trim() || !localStorage.getItem("onboarding_done");
+  const [dataPlate, setDataPlate] = useState(loadDataPlate);
+  const needsOnboarding = !profile?.name?.trim();
 
   const [messages, setMessages] = useState(() => {
     return loadMsgs() || [makeWelcome()];
@@ -566,7 +577,12 @@ export default function DiagnosePage() {
         ? "JOURNEYMAN (4-10 yrs) — skip basics, focus on what to check and what it means"
         : "MASTER (11+ yrs) — peer level, just key differentiators, no hand-holding";
 
-    const profileCtx = `\n\nTECH PROFILE — calibrate every response to this:\n- Name: ${techName}\n- Years in trade: ${years}\n- Level: ${expLevel}\n- Temperature unit: ${unit} — use this unit for ALL temperatures in every response`;
+    let profileCtx = `\n\nTECH PROFILE — calibrate every response to this:\n- Name: ${techName}\n- Years in trade: ${years}\n- Level: ${expLevel}\n- Temperature unit: ${unit} — use this unit for ALL temperatures in every response`;
+
+    const dp = loadDataPlate();
+    if (dp?.brand) {
+      profileCtx += `\n\nCURRENT UNIT — already read from data plate, NEVER ask for this info again:\n- Brand: ${dp.brand}${dp.model ? `\n- Model: ${dp.model}` : ''}${dp.serial ? `\n- Serial: ${dp.serial}` : ''}${dp.unit_type ? `\n- Type: ${dp.unit_type}` : ''}${dp.refrigerant_type ? `\n- Refrigerant: ${dp.refrigerant_type}` : ''}${dp.tonnage ? `\n- Tonnage: ${dp.tonnage}` : ''}${dp.voltage ? `\n- Voltage: ${dp.voltage}` : ''}`;
+    }
 
     const src = msgHistory || messages;
     const last10 = src.slice(-10);
@@ -600,39 +616,44 @@ export default function DiagnosePage() {
 
       if (!extraction.found || !extraction.brand) return;
 
-      const res = await base44.integrations.Core.InvokeLLM({
-        prompt: `Find HVAC technical manuals for this unit — Brand: ${extraction.brand}, Model: ${extraction.model || "unknown"}, Type: ${extraction.unit_type || "unknown"}, Refrigerant: ${extraction.refrigerant_type || "unknown"}. Provide the most likely direct URLs (PDFs preferred) for: installation manual, service/maintenance manual, wiring diagram, parts list. Use manufacturer websites and manualslib.com. Return structured JSON.`,
-        model: "claude_sonnet_4_6",
-        max_tokens: 600,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            unit_summary: { type: "string" },
-            documents: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  type:   { type: "string" },
-                  title:  { type: "string" },
-                  url:    { type: "string" },
-                  source: { type: "string" },
-                }
-              }
-            }
-          }
-        }
-      });
+      // Save data plate context so AI never forgets this unit info
+      saveDataPlate(extraction);
+      setDataPlate(extraction);
 
-      if (res.documents?.length > 0) {
-        ManualsStore.save({
-          id: Date.now().toString(),
-          created_date: new Date().toISOString(),
-          unit: extraction,
-          documents: res.documents,
-          unit_summary: res.unit_summary || "",
-        });
-      }
+      // Build real, working search links instead of asking AI to guess PDF URLs
+      const brand = extraction.brand.trim();
+      const model = extraction.model?.trim() || '';
+      const q = encodeURIComponent(`${brand} ${model}`.trim());
+      const qInstall = encodeURIComponent(`${brand} ${model} installation manual`.trim());
+      const qService = encodeURIComponent(`${brand} ${model} service manual`.trim());
+      const qWiring  = encodeURIComponent(`${brand} ${model} wiring diagram`.trim());
+
+      const documents = [
+        { type: "All Manuals",        title: `${brand}${model ? ' ' + model : ''} — All Manuals`,        url: `https://www.manualslib.com/search.php?q=${q}`,        source: "ManualsLib" },
+        { type: "Installation Manual", title: `${brand}${model ? ' ' + model : ''} — Installation`,       url: `https://www.manualslib.com/search.php?q=${qInstall}`,   source: "ManualsLib" },
+        { type: "Service Manual",      title: `${brand}${model ? ' ' + model : ''} — Service`,            url: `https://www.manualslib.com/search.php?q=${qService}`,   source: "ManualsLib" },
+        { type: "Wiring Diagram",      title: `${brand}${model ? ' ' + model : ''} — Wiring`,             url: `https://www.manualslib.com/search.php?q=${qWiring}`,    source: "ManualsLib" },
+      ];
+
+      // Add direct manufacturer resource link
+      const bl = brand.toLowerCase();
+      if (bl.includes('carrier'))                        documents.push({ type: "Manufacturer", title: "Carrier Technical Resources", url: "https://www.carrier.com/residential/en/us/support/",                     source: "Carrier" });
+      else if (bl.includes('trane'))                    documents.push({ type: "Manufacturer", title: "Trane Technical Resources",   url: "https://www.trane.com/residential/en/resources/",                       source: "Trane" });
+      else if (bl.includes('lennox'))                   documents.push({ type: "Manufacturer", title: "Lennox Technical Resources",  url: "https://www.lennox.com/dealers/technical-support",                     source: "Lennox" });
+      else if (bl.includes('rheem') || bl.includes('ruud'))   documents.push({ type: "Manufacturer", title: "Rheem Technical Literature",  url: "https://www.rheem.com/technical-literature/",                          source: "Rheem" });
+      else if (bl.includes('goodman') || bl.includes('amana')) documents.push({ type: "Manufacturer", title: "Goodman Technical Resources", url: "https://www.goodmanmfg.com/resources/customer-resources",              source: "Goodman" });
+      else if (bl.includes('york'))                     documents.push({ type: "Manufacturer", title: "York Technical Resources",   url: "https://www.johnsoncontrols.com/hvac-and-refrigeration",               source: "York" });
+      else if (bl.includes('daikin'))                   documents.push({ type: "Manufacturer", title: "Daikin Technical Resources",  url: "https://daikincomfort.com/professional-support/technical-support",     source: "Daikin" });
+      else if (bl.includes('mitsubishi'))               documents.push({ type: "Manufacturer", title: "Mitsubishi Technical Resources", url: "https://www.mitsubishicomfort.com/contractors/tech-resources",        source: "Mitsubishi" });
+      else if (bl.includes('fujitsu'))                  documents.push({ type: "Manufacturer", title: "Fujitsu Technical Resources",  url: "https://www.fujitsugeneral.com/us/resources/",                          source: "Fujitsu" });
+
+      ManualsStore.save({
+        id: Date.now().toString(),
+        created_date: new Date().toISOString(),
+        unit: extraction,
+        documents,
+        unit_summary: `${brand}${model ? ' ' + model : ''}${extraction.unit_type ? ' — ' + extraction.unit_type : ''}`,
+      });
     } catch {
       // Silent fail — never disrupt the main chat
     }
@@ -658,24 +679,6 @@ export default function DiagnosePage() {
     } catch (err) {
       setMessages(prev => [...prev, { role: "assistant", content: "Connection error — check your network and try again." }]);
     }
-    setIsLoading(false);
-  };
-
-  const handleChipSelect = async (chip) => {
-    setStarted(true);
-    const userMsg = { role: "user", content: `Customer complaint: ${chip}. Residential system.` };
-    setMessages(prev => [...prev, userMsg]);
-    setIsLoading(true);
-    try {
-      const prompt = buildPrompt(`Customer complaint: ${chip}. Residential system.`);
-      const response = await base44.integrations.Core.InvokeLLM({
-        prompt,
-        model: "claude_sonnet_4_6",
-        max_tokens: 200,
-      });
-      window.__trackCredit?.();
-      setMessages(prev => [...prev, { role: "assistant", content: response }]);
-    } catch { /* silent */ }
     setIsLoading(false);
   };
 
@@ -759,7 +762,8 @@ ${transcript}`,
     }
     ticketIdRef.current = null;
     localStorage.removeItem(TICKET_KEY);
-    const p = loadProfile();
+    clearDataPlate();
+    setDataPlate(null);
     const welcome = makeWelcome();
     setMessages([welcome]);
     saveMsgs([welcome]);
@@ -769,8 +773,6 @@ ${transcript}`,
   if (needsOnboarding) {
     return <OnboardingScreen onComplete={handleOnboardingComplete} />;
   }
-
-  const firstName = (profile?.name || "").trim().split(/\s+/)[0] || "";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 124px)" }}>
@@ -805,13 +807,6 @@ ${transcript}`,
               border: "3px solid var(--bg)",
               boxShadow: "0 0 8px rgba(76,175,80,0.7)",
             }} />
-          </div>
-          <div style={{
-            fontFamily: "'Barlow Condensed', sans-serif",
-            fontSize: 13, fontWeight: 700, color: "var(--text-muted)",
-            textTransform: "uppercase", letterSpacing: "0.18em", marginBottom: 4,
-          }}>
-            {firstName ? `HELLO, ${firstName.toUpperCase()}` : "HELLO"}
           </div>
           <div style={{
             fontFamily: "'Barlow Condensed', sans-serif",
