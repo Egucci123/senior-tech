@@ -71,10 +71,13 @@ CAPACITORS:
 - Discharge before testing (20,000 ohm resistor). Replace if >10% below rated, bulged, or leaking. 440VAC can replace 370VAC — not reverse.
 - Hard start kit = start cap + potential relay. Always verify run cap first.
 - A bad capacitor is the most commonly misdiagnosed problem — many good compressors condemned because of it. Test cap first, every time.
+- 3-PHASE compressors do NOT have run capacitors — they are self-starting. Never look for a cap on a 3-phase unit.
 
 COMPRESSORS:
-- Terminals: C (common), S (start), R (run). R-to-S = sum of C-to-S + C-to-R.
+- Single-phase terminals: C (common), S (start), R (run). R-to-S = sum of C-to-S + C-to-R.
 - Open winding or shorted to ground = replace. Verify electrically before condemning — most returned compressors test fine.
+- Amp draw: amps well above RLA = high head, liquid slugging, or internal failure. Amps at half RLA or less = bad valves or open winding. Zero amps with voltage present = thermal overload tripped, bad capacitor, locked rotor, or open winding.
+- 3-phase scroll: phase rotation critical — reverse phase = backward rotation = no cooling, immediate damage. Use a phase rotation meter before startup.
 - Burned compressor: acid in system — flush lineset, replace drier, verify oil acidity before replacing compressor.
 
 CONTACTORS:
@@ -153,6 +156,20 @@ CHARGE DECISION LOGIC:
 - Low suction, high SH, normal-to-high SC: metering device or liquid line restriction. Check filter-drier temp drop (>3°F = restriction).
 - High suction, low head, low SH: bad compressor valves. Adding refrigerant won't help.
 - Normal pressures, high SC: overcharge. Recover to SC target.
+
+SYMPTOM-TO-CAUSE QUICK REFERENCE:
+- High head, normal suction: condenser heat transfer problem — coil dirty, fan slow, recirculation, non-condensables.
+- High head, low suction, high SH, low SC: liquid line or TXV restriction — check filter-drier temp drop.
+- High head, low suction, normal SH, high SC: overcharge — recover refrigerant.
+- Low suction, high SH (fixed orifice): undercharge — confirm no leak, repair, recharge to SH chart.
+- Low suction, high SH (TXV): TXV restricting — check liquid supply, power head clamped/insulated.
+- Low head, high suction, low SH: bad compressor valves — amps well below nameplate confirms.
+- Low suction, low delta-T, near-zero SH: low airflow or TXV flooding — check static pressure first.
+
+READING WIRING DIAGRAMS:
+- Use ladder diagram (schematic). Left rail = L1, right rail = L2/N. Each rung = series circuit.
+- Voltage drop method: meter across each component in the suspect rung. Full voltage across it = OPEN. 0V = closed. Work L1 toward the load.
+- Fault codes: always read history oldest-to-newest. The FIRST fault caused the lockout — subsequent codes are consequences.
 
 COMMON MISDIAGNOSIS TRAPS:
 1. Charging a leaking system without finding the leak first.
@@ -416,13 +433,12 @@ export default function DiagnosePage() {
   const tryAutoFetchManuals = async (aiResponse) => {
     try {
       const extraction = await base44.integrations.Core.InvokeLLM({
-        prompt: `The following is a response from an HVAC diagnostic assistant after viewing an image. Did the assistant extract equipment nameplate or data plate information (brand, model, unit type, refrigerant)? If yes, return the extracted fields. If no nameplate/data plate was discussed, return {"found": false}.\n\nResponse:\n${aiResponse.slice(0, 1000)}`,
+        prompt: `Extract HVAC equipment identification from this technician response. Look for any brand name (Carrier, Trane, Lennox, Rheem, Ruud, Goodman, Amana, York, Daikin, Mitsubishi, Fujitsu, Bryant, Heil, etc.), model number, unit type (condenser, air handler, heat pump, furnace, mini-split, package unit), and refrigerant type. Return the fields you find. If absolutely no equipment brand is mentioned, return {"brand": null}.\n\nResponse:\n${aiResponse.slice(0, 1200)}`,
         model: "claude_haiku_4_5",
         max_tokens: 200,
         response_json_schema: {
           type: "object",
           properties: {
-            found:           { type: "boolean" },
             brand:           { type: "string" },
             model:           { type: "string" },
             unit_type:       { type: "string" },
@@ -431,7 +447,7 @@ export default function DiagnosePage() {
         }
       });
 
-      if (!extraction.found || !extraction.brand) return;
+      if (!extraction?.brand) return;
 
       // Save data plate context so AI never forgets this unit info
       saveDataPlate(extraction);
