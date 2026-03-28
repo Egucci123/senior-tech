@@ -453,19 +453,20 @@ export default function DiagnosePage() {
       saveDataPlate(extraction);
       setDataPlate(extraction);
 
-      // Build real, working search links instead of asking AI to guess PDF URLs
+      // Use Google search links — always return results, surface PDFs from all sources
       const brand = extraction.brand.trim();
       const model = extraction.model?.trim() || '';
-      const q = encodeURIComponent(`${brand} ${model}`.trim());
-      const qInstall = encodeURIComponent(`${brand} ${model} installation manual`.trim());
-      const qService = encodeURIComponent(`${brand} ${model} service manual`.trim());
-      const qWiring  = encodeURIComponent(`${brand} ${model} wiring diagram`.trim());
+      const base = `${brand}${model ? ' ' + model : ''}`.trim();
+      const qInstall = encodeURIComponent(`${base} installation manual filetype:pdf`);
+      const qService = encodeURIComponent(`${base} service manual filetype:pdf`);
+      const qWiring  = encodeURIComponent(`${base} wiring diagram filetype:pdf`);
+      const qAll     = encodeURIComponent(`${base} manual site:manualslib.com OR site:hvac.com OR filetype:pdf`);
 
       const documents = [
-        { type: "All Manuals",        title: `${brand}${model ? ' ' + model : ''} — All Manuals`,        url: `https://www.manualslib.com/search.php?q=${q}`,        source: "ManualsLib" },
-        { type: "Installation Manual", title: `${brand}${model ? ' ' + model : ''} — Installation`,       url: `https://www.manualslib.com/search.php?q=${qInstall}`,   source: "ManualsLib" },
-        { type: "Service Manual",      title: `${brand}${model ? ' ' + model : ''} — Service`,            url: `https://www.manualslib.com/search.php?q=${qService}`,   source: "ManualsLib" },
-        { type: "Wiring Diagram",      title: `${brand}${model ? ' ' + model : ''} — Wiring`,             url: `https://www.manualslib.com/search.php?q=${qWiring}`,    source: "ManualsLib" },
+        { type: "All Manuals",         title: `${base} — All Manuals`,         url: `https://www.google.com/search?q=${qAll}`,     source: "Google" },
+        { type: "Installation Manual", title: `${base} — Installation Manual`, url: `https://www.google.com/search?q=${qInstall}`, source: "Google" },
+        { type: "Service Manual",      title: `${base} — Service Manual`,      url: `https://www.google.com/search?q=${qService}`, source: "Google" },
+        { type: "Wiring Diagram",      title: `${base} — Wiring Diagram`,      url: `https://www.google.com/search?q=${qWiring}`,  source: "Google" },
       ];
 
       // Add direct manufacturer resource link
