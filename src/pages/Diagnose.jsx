@@ -486,14 +486,17 @@ export default function DiagnosePage() {
         }
       } catch { /* silent — fall through to Google fallback */ }
 
-      // Always add a Google PDF search as backup
-      const qPdf = encodeURIComponent(`${base} installation manual filetype:pdf`);
-      documents.push({
-        type: "Installation Manual",
-        title: `${base} — Google PDF Search`,
-        url: `https://www.google.com/search?q=${qPdf}`,
-        source: "Google",
-      });
+      // Targeted Google search scoped to ManualsLib — finds exact product page as first result
+      const qSite    = encodeURIComponent(`site:manualslib.com ${base}`);
+      const qInstall = encodeURIComponent(`site:manualslib.com ${base} installation`);
+      const qService = encodeURIComponent(`site:manualslib.com ${base} service`);
+      const qWiring  = encodeURIComponent(`site:manualslib.com ${base} wiring`);
+      documents.push(
+        { type: "All Manuals",         title: `${base} — Find on ManualsLib`,        url: `https://www.google.com/search?q=${qSite}`,    source: "ManualsLib" },
+        { type: "Installation Manual", title: `${base} — Installation Manual`,        url: `https://www.google.com/search?q=${qInstall}`, source: "ManualsLib" },
+        { type: "Service Manual",      title: `${base} — Service Manual`,             url: `https://www.google.com/search?q=${qService}`, source: "ManualsLib" },
+        { type: "Wiring Diagram",      title: `${base} — Wiring Diagram`,             url: `https://www.google.com/search?q=${qWiring}`,  source: "ManualsLib" }
+      );
 
       // Add direct manufacturer resource link
       const bl = brand.toLowerCase();
