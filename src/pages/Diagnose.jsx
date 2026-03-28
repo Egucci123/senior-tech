@@ -339,17 +339,9 @@ READING WIRING DIAGRAMS FAST:
 
 
 
-function getGreeting() {
-  const h = new Date().getHours();
-  if (h >= 5  && h < 12) return "GOOD MORNING";
-  if (h >= 12 && h < 17) return "GOOD AFTERNOON";
-  if (h >= 17 && h < 22) return "GOOD EVENING";
-  return "GOOD NIGHT";
-}
-
 function makeWelcome(profile) {
   const first = (profile?.name || "").trim().split(/\s+/)[0] || "";
-  const greeting = first ? `${getGreeting()}, ${first.toUpperCase()}` : `${getGreeting()}`;
+  const greeting = first ? `HELLO, ${first.toUpperCase()}` : "HELLO";
   return {
     role: "assistant",
     content: `**${greeting} — Senior Tech here.** Ready to diagnose.\n\nDescribe the issue or send a photo of the data plate to get started.`,
@@ -373,6 +365,7 @@ function OnboardingScreen({ onComplete }) {
       temp_unit: form.temp_unit,
     };
     localStorage.setItem("senior_tech_profile", JSON.stringify(profile));
+    localStorage.setItem("onboarding_done", "1");
     onComplete(profile);
   };
 
@@ -500,7 +493,7 @@ function OnboardingScreen({ onComplete }) {
 
 export default function DiagnosePage() {
   const [profile, setProfile] = useState(loadProfile);
-  const needsOnboarding = !profile?.name?.trim();
+  const needsOnboarding = !profile?.name?.trim() || !localStorage.getItem("onboarding_done");
 
   const [messages, setMessages] = useState(() => {
     if (!loadProfile()?.name?.trim()) return [makeWelcome(null)];
@@ -803,7 +796,7 @@ ${transcript}`,
             fontSize: 13, fontWeight: 700, color: "var(--text-muted)",
             textTransform: "uppercase", letterSpacing: "0.18em", marginBottom: 4,
           }}>
-            {getGreeting()}{firstName ? `, ${firstName.toUpperCase()}` : ""}
+            {firstName ? `HELLO, ${firstName.toUpperCase()}` : "HELLO"}
           </div>
           <div style={{
             fontFamily: "'Barlow Condensed', sans-serif",
