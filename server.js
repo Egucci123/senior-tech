@@ -92,11 +92,56 @@ app.post("/api/llm", async (req, res) => {
   }
 });
 
-// Strip HVAC model option/config suffix — keep only the base product code (first 8 alphanumeric chars)
-// ZE060H12A2A1ABA1A2 → ZE060H12  |  24ACC636A003 → 24ACC636  |  4TTR4036A1000AA → 4TTR4036
-function baseModelCode(model) {
-  if (!model) return '';
-  return model.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 8);
+// Clean brand name — strip subsidiary/dual names ("York/Johnson Controls" → "York")
+function cleanBrand(brand) {
+  return brand.split(/[\/,]/)[0].trim();
+}
+
+// Generate model search tokens at decreasing specificity
+// ZE060H12A2A1ABA1A2 → ["ZE060H12", "ZE060H", "ZE060"]
+function modelTokens(model) {
+  if (!model) return [];
+  const clean = model.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  const tokens = [];
+  if (clean.length >= 8) tokens.push(clean.slice(0, 8));
+  if (clean.length >= 6) tokens.push(clean.slice(0, 6));
+  if (clean.length >= 4) tokens.push(clean.slice(0, 4));
+  return [...new Set(tokens)]; // dedupe
+}
+
+// Score a search result — higher = better match
+function scoreResult(r, modelTokens, brand) {
+  const url   = (r.url   || '').toLowerCase();
+  const title = (r.title || '').toLowerCase();
+  const bl    = brand.toLowerCase();
+  let score = 0;
+  if (url.includes('manualslib.com'))     score += 10;
+  if (url.includes('.pdf'))               score += 8;
+  if (title.includes(bl))                 score += 3;
+  if (url.includes(bl))                   score += 3;
+  for (const tok of modelTokens) {
+    const t = tok.toLowerCase();
+    if (url.includes(t))   score += 6;
+    if (title.includes(t)) score += 4;
+  }
+  return score;
+}
+
+async function braveSearch(query, apiKey) {
+  const resp = await fetch(
+    `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`,
+    {
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip',
+        'X-Subscription-Token': apiKey,
+      },
+      signal: AbortSignal.timeout(6000),
+    }
+  );
+  if (!resp.ok) return [];
+  const data = await resp.json();
+  return data.web?.results || [];
 }
 
 // Manual finder — uses Brave Search to find real PDF manuals for a specific unit
@@ -108,50 +153,54 @@ app.get("/api/find-manual", async (req, res) => {
     return res.json({ manuals: [] });
   }
 
-  // Use base model code only — full model strings (with option codes) return no results
-  const base = baseModelCode(model);
-  const unitName = `${brand}${base ? ' ' + base : ''}`.trim();
+  const b = cleanBrand(brand);
+  const tokens = modelTokens(model);
 
-  // site:manualslib.com finds real manual pages; filetype:pdf doesn't work in Brave
-  const searches = [
-    { type: 'Installation Manual', query: `${unitName} installation manual site:manualslib.com` },
-    { type: 'Service Manual',      query: `${unitName} service manual site:manualslib.com` },
-    { type: 'Wiring Diagram',      query: `${unitName} wiring diagram site:manualslib.com` },
-  ];
+  // Build query list per manual type — most specific first, fall back to brand-only
+  const queryLists = {
+    'Installation Manual': [
+      ...tokens.map(t => `${b} ${t} installation manual site:manualslib.com`),
+      `${b} installation manual site:manualslib.com`,
+      ...tokens.map(t => `${b} ${t} installation manual filetype:pdf`),
+    ],
+    'Service Manual': [
+      ...tokens.map(t => `${b} ${t} service manual site:manualslib.com`),
+      `${b} service manual site:manualslib.com`,
+      ...tokens.map(t => `${b} ${t} service manual filetype:pdf`),
+    ],
+    'Wiring Diagram': [
+      ...tokens.map(t => `${b} ${t} wiring diagram site:manualslib.com`),
+      `${b} wiring diagram site:manualslib.com`,
+      ...tokens.map(t => `${b} ${t} wiring diagram filetype:pdf`),
+    ],
+  };
 
   const manuals = [];
-  for (const { type, query } of searches) {
-    try {
-      const resp = await fetch(
-        `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`,
-        {
-          headers: {
-            'Accept': 'application/json',
-            'Accept-Encoding': 'gzip',
-            'X-Subscription-Token': process.env.BRAVE_API_KEY,
-          },
-          signal: AbortSignal.timeout(6000),
+  for (const [type, queries] of Object.entries(queryLists)) {
+    let bestResult = null;
+    let bestScore  = -1;
+
+    for (const query of queries) {
+      try {
+        const results = await braveSearch(query, process.env.BRAVE_API_KEY);
+        for (const r of results) {
+          const s = scoreResult(r, tokens, b);
+          if (s > bestScore) { bestScore = s; bestResult = r; }
         }
-      );
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      const results = data.web?.results || [];
-      // Prefer direct .pdf link, then manualslib.com page, then any result
-      const best =
-        results.find(r => r.url?.toLowerCase().includes('.pdf')) ||
-        results.find(r => r.url?.toLowerCase().includes('manualslib.com')) ||
-        results[0];
-      if (best?.url) {
-        const isPdf = best.url.toLowerCase().includes('.pdf');
-        manuals.push({
-          type,
-          title: best.title || type,
-          url: best.url,
-          isPdf,
-        });
+        // Stop early if we already found a model-specific manualslib page (score ≥ 16)
+        if (bestScore >= 16) break;
+      } catch (err) {
+        console.warn(`Search failed [${type}]:`, err.message);
       }
-    } catch (err) {
-      console.warn(`Manual search failed for ${type}:`, err.message);
+    }
+
+    if (bestResult?.url) {
+      manuals.push({
+        type,
+        title: bestResult.title || type,
+        url: bestResult.url,
+        isPdf: bestResult.url.toLowerCase().includes('.pdf'),
+      });
     }
   }
 
