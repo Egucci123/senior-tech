@@ -92,6 +92,13 @@ app.post("/api/llm", async (req, res) => {
   }
 });
 
+// Strip HVAC model option/config suffix — keep only the base product code (first 8 alphanumeric chars)
+// ZE060H12A2A1ABA1A2 → ZE060H12  |  24ACC636A003 → 24ACC636  |  4TTR4036A1000AA → 4TTR4036
+function baseModelCode(model) {
+  if (!model) return '';
+  return model.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 8);
+}
+
 // Manual finder — uses Brave Search to find real PDF manuals for a specific unit
 app.get("/api/find-manual", async (req, res) => {
   const { brand, model } = req.query;
@@ -101,11 +108,15 @@ app.get("/api/find-manual", async (req, res) => {
     return res.json({ manuals: [] });
   }
 
-  const unitName = `${brand}${model ? ' ' + model : ''}`.trim();
+  // Use base model code only — full model strings (with option codes) return no results
+  const base = baseModelCode(model);
+  const unitName = `${brand}${base ? ' ' + base : ''}`.trim();
+
+  // site:manualslib.com finds real manual pages; filetype:pdf doesn't work in Brave
   const searches = [
-    { type: 'Installation Manual', query: `${unitName} installation manual filetype:pdf` },
-    { type: 'Service Manual',      query: `${unitName} service manual filetype:pdf` },
-    { type: 'Wiring Diagram',      query: `${unitName} wiring diagram filetype:pdf` },
+    { type: 'Installation Manual', query: `${unitName} installation manual site:manualslib.com` },
+    { type: 'Service Manual',      query: `${unitName} service manual site:manualslib.com` },
+    { type: 'Wiring Diagram',      query: `${unitName} wiring diagram site:manualslib.com` },
   ];
 
   const manuals = [];
@@ -125,14 +136,18 @@ app.get("/api/find-manual", async (req, res) => {
       if (!resp.ok) continue;
       const data = await resp.json();
       const results = data.web?.results || [];
-      // Prefer direct .pdf links, fall back to first result
-      const best = results.find(r => r.url?.toLowerCase().includes('.pdf')) || results[0];
+      // Prefer direct .pdf link, then manualslib.com page, then any result
+      const best =
+        results.find(r => r.url?.toLowerCase().includes('.pdf')) ||
+        results.find(r => r.url?.toLowerCase().includes('manualslib.com')) ||
+        results[0];
       if (best?.url) {
+        const isPdf = best.url.toLowerCase().includes('.pdf');
         manuals.push({
           type,
           title: best.title || type,
           url: best.url,
-          isPdf: best.url.toLowerCase().includes('.pdf'),
+          isPdf,
         });
       }
     } catch (err) {
