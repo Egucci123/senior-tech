@@ -92,45 +92,87 @@ app.post("/api/llm", async (req, res) => {
   }
 });
 
-// Manual finder — uses AI web search to find real manual pages for a specific unit
+// Manual finder — uses Brave Search to find real PDF manuals for a specific unit
 app.get("/api/find-manual", async (req, res) => {
   const { brand, model } = req.query;
   if (!brand) return res.json({ manuals: [] });
+  if (!process.env.BRAVE_API_KEY) {
+    console.warn('BRAVE_API_KEY not set');
+    return res.json({ manuals: [] });
+  }
 
   const unitName = `${brand}${model ? ' ' + model : ''}`.trim();
-  const brandSlug = brand.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+  const searches = [
+    { type: 'Installation Manual', query: `${unitName} installation manual filetype:pdf` },
+    { type: 'Service Manual',      query: `${unitName} service manual filetype:pdf` },
+    { type: 'Wiring Diagram',      query: `${unitName} wiring diagram filetype:pdf` },
+  ];
+
+  const manuals = [];
+  for (const { type, query } of searches) {
+    try {
+      const resp = await fetch(
+        `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`,
+        {
+          headers: {
+            'Accept': 'application/json',
+            'Accept-Encoding': 'gzip',
+            'X-Subscription-Token': process.env.BRAVE_API_KEY,
+          },
+          signal: AbortSignal.timeout(6000),
+        }
+      );
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const results = data.web?.results || [];
+      // Prefer direct .pdf links, fall back to first result
+      const best = results.find(r => r.url?.toLowerCase().includes('.pdf')) || results[0];
+      if (best?.url) {
+        manuals.push({
+          type,
+          title: best.title || type,
+          url: best.url,
+          isPdf: best.url.toLowerCase().includes('.pdf'),
+        });
+      }
+    } catch (err) {
+      console.warn(`Manual search failed for ${type}:`, err.message);
+    }
+  }
+
+  res.json({ manuals });
+});
+
+// PDF proxy — fetches and streams PDFs through the server so they open directly in-app
+app.get("/api/proxy-pdf", async (req, res) => {
+  const { url } = req.query;
+  if (!url || !url.startsWith('http')) return res.status(400).send('Invalid URL');
 
   try {
-    const message = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 800,
-      tools: [{ type: "web_search_20250305", name: "web_search" }],
-      messages: [{
-        role: "user",
-        content: `Search manualslib.com for the ${unitName} HVAC unit manuals. Find direct page URLs for: installation manual, service manual, and wiring diagram. Return ONLY a JSON array, no other text:\n[{"type":"Installation Manual","title":"...","url":"https://www.manualslib.com/..."},{"type":"Service Manual","title":"...","url":"https://www.manualslib.com/..."},{"type":"Wiring Diagram","title":"...","url":"https://www.manualslib.com/..."}]\nOnly include real URLs from actual search results.`
-      }]
-    }, { headers: { 'anthropic-beta': 'web-search-2025-03-05' } });
+    const pdfResp = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
+        'Accept': 'application/pdf,*/*',
+      },
+      signal: AbortSignal.timeout(25000),
+    });
 
-    const textBlock = message.content.find(b => b.type === 'text');
-    if (textBlock) {
-      const cleaned = textBlock.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
-      try {
-        const manuals = JSON.parse(cleaned);
-        if (Array.isArray(manuals) && manuals.length > 0) {
-          return res.json({ manuals });
-        }
-      } catch {}
-      // Fall back to extracting any manualslib URLs from the text
-      const urls = [...textBlock.text.matchAll(/https?:\/\/[^\s"'<>)]*manualslib[^\s"'<>)]*/gi)]
-        .map(m => m[0]).filter((u, i, a) => a.indexOf(u) === i).slice(0, 4);
-      if (urls.length > 0) {
-        return res.json({ manuals: urls.map((url, i) => ({ type: `Manual ${i + 1}`, title: url, url })) });
-      }
+    if (!pdfResp.ok) return res.status(404).send('Manual not found');
+
+    const contentType = pdfResp.headers.get('content-type') || '';
+    if (!contentType.includes('pdf') && !url.toLowerCase().includes('.pdf')) {
+      return res.status(400).send('Not a PDF');
     }
-    res.json({ manuals: [], fallback: `https://www.manualslib.com/brand/${brandSlug}/` });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+
+    const buffer = await pdfResp.arrayBuffer();
+    res.send(Buffer.from(buffer));
   } catch (err) {
-    console.error('find-manual error:', err.message);
-    res.json({ manuals: [], fallback: `https://www.manualslib.com/brand/${brandSlug}/` });
+    console.error('PDF proxy error:', err.message);
+    res.status(500).send('Could not load PDF');
   }
 });
 

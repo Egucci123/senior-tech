@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { BookOpen, ExternalLink, ChevronDown, ChevronUp, Wrench } from "lucide-react";
+import { BookOpen, ExternalLink, FileText, X, Wrench } from "lucide-react";
 import PageHeader from "../components/shared/PageHeader";
 import { ManualsStore } from "../components/manualsStore";
 
@@ -8,15 +8,133 @@ const DOC_COLORS = {
   install: "#4caf50",
   service: "#4fc3f7",
   wiring:  "#ffb300",
-  parts:   "#9e9e9e",
+  default: "#9e9e9e",
 };
 function docColor(type) {
   const t = (type || "").toLowerCase();
   if (t.includes("install"))                         return DOC_COLORS.install;
   if (t.includes("service") || t.includes("maint")) return DOC_COLORS.service;
   if (t.includes("wiring"))                          return DOC_COLORS.wiring;
-  if (t.includes("parts"))                           return DOC_COLORS.parts;
-  return "#555555";
+  return DOC_COLORS.default;
+}
+
+// Full-screen PDF viewer overlay
+function PdfViewer({ doc, onClose }) {
+  const proxyUrl = `/api/proxy-pdf?url=${encodeURIComponent(doc.url)}`;
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 500,
+      background: "#000", display: "flex", flexDirection: "column",
+    }}>
+      {/* Toolbar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12,
+        padding: "12px 16px", background: "var(--bg-card)",
+        borderBottom: "1px solid var(--border)", flexShrink: 0,
+      }}>
+        <button onClick={onClose} style={{
+          background: "none", border: "none", cursor: "pointer", padding: 4,
+        }}>
+          <X size={20} color="var(--text-primary)" />
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: 14, fontWeight: 700, color: "var(--text-primary)",
+            textTransform: "uppercase", letterSpacing: "0.04em",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>
+            {doc.title || doc.type}
+          </div>
+          <div style={{
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: 10, color: docColor(doc.type),
+            textTransform: "uppercase", letterSpacing: "0.08em",
+          }}>
+            {doc.type}
+          </div>
+        </div>
+        <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{
+          display: "flex", alignItems: "center", gap: 6,
+          fontFamily: "'Barlow Condensed', sans-serif",
+          fontSize: 12, fontWeight: 600, color: "var(--blue)",
+          textTransform: "uppercase", letterSpacing: "0.08em",
+          textDecoration: "none",
+        }}>
+          <ExternalLink size={14} />
+          BROWSER
+        </a>
+      </div>
+
+      {/* PDF iframe */}
+      <iframe
+        src={proxyUrl}
+        style={{ flex: 1, width: "100%", border: "none", background: "#fff" }}
+        title={doc.title || doc.type}
+      />
+    </div>
+  );
+}
+
+function DocCard({ doc }) {
+  const [viewing, setViewing] = useState(false);
+  const color = docColor(doc.type);
+  const isPdf = doc.isPdf || doc.url?.toLowerCase().includes('.pdf');
+
+  return (
+    <>
+      {viewing && isPdf && (
+        <PdfViewer doc={doc} onClose={() => setViewing(false)} />
+      )}
+      <div
+        onClick={() => isPdf ? setViewing(true) : window.open(doc.url, '_blank')}
+        style={{
+          display: "flex", alignItems: "center", gap: 12,
+          padding: "12px 14px",
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border)",
+          borderLeft: `3px solid ${color}`,
+          borderRadius: 6, cursor: "pointer",
+        }}
+      >
+        {isPdf
+          ? <FileText size={18} style={{ color, flexShrink: 0 }} />
+          : <BookOpen size={18} style={{ color, flexShrink: 0 }} />
+        }
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: 14, fontWeight: 600, color: "var(--text-primary)",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>
+            {doc.title || doc.type}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 2, alignItems: "center" }}>
+            <span style={{
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: 10, fontWeight: 600, color,
+              background: color + "18", padding: "1px 7px",
+              borderRadius: 99, textTransform: "uppercase", letterSpacing: "0.06em",
+            }}>
+              {doc.type?.toUpperCase()}
+            </span>
+            <span style={{
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: 10, fontWeight: 600,
+              color: isPdf ? "var(--green)" : "var(--text-muted)",
+              textTransform: "uppercase", letterSpacing: "0.06em",
+            }}>
+              {isPdf ? "PDF — OPENS IN APP" : "WEB PAGE"}
+            </span>
+          </div>
+        </div>
+        {isPdf
+          ? <FileText size={13} style={{ color: "var(--green)", flexShrink: 0 }} />
+          : <ExternalLink size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+        }
+      </div>
+    </>
+  );
 }
 
 function ManualSet({ entry }) {
@@ -29,7 +147,6 @@ function ManualSet({ entry }) {
       border: "1px solid var(--border)",
       borderRadius: 8, overflow: "hidden",
     }}>
-      {/* Header */}
       <button onClick={() => setExpanded(!expanded)} style={{
         width: "100%", display: "flex", alignItems: "center",
         gap: 12, padding: "12px 14px", textAlign: "left",
@@ -52,7 +169,7 @@ function ManualSet({ entry }) {
           }}>
             {unit?.brand || "Unknown"}{unit?.model ? ` — ${unit.model}` : ""}
           </div>
-          <div style={{ display: "flex", gap: 10, marginTop: 3, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 10, marginTop: 3, alignItems: "center", flexWrap: "wrap" }}>
             {unit?.unit_type && (
               <span style={{
                 fontFamily: "'Barlow Condensed', sans-serif",
@@ -73,10 +190,7 @@ function ManualSet({ entry }) {
                 {unit.refrigerant_type}
               </span>
             )}
-            <span style={{
-              fontFamily: "'Inter', sans-serif",
-              fontSize: 11, color: "var(--text-muted)",
-            }}>
+            <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, color: "var(--text-muted)" }}>
               {format(new Date(created_date), "MMM d, h:mm a")}
             </span>
           </div>
@@ -90,13 +204,15 @@ function ManualSet({ entry }) {
           }}>
             {documents?.length || 0} DOCS
           </span>
-          {expanded
-            ? <ChevronUp size={14} color="var(--text-muted)" />
-            : <ChevronDown size={14} color="var(--text-muted)" />}
+          <span style={{
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: 11, color: "var(--text-muted)",
+          }}>
+            {expanded ? "▲" : "▼"}
+          </span>
         </div>
       </button>
 
-      {/* Expanded docs */}
       {expanded && (
         <div style={{ borderTop: "1px solid var(--border)", padding: "12px 14px" }}>
           {unit_summary && (
@@ -110,52 +226,10 @@ function ManualSet({ entry }) {
               {unit_summary}
             </div>
           )}
-
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {(documents || []).map((doc, i) => {
-              const color = docColor(doc.type);
-              return (
-                <a key={i} href={doc.url} target="_blank" rel="noopener noreferrer"
-                  style={{
-                    display: "flex", alignItems: "center", gap: 12,
-                    padding: "12px 14px",
-                    background: "var(--bg-elevated)",
-                    border: "1px solid var(--border)",
-                    borderLeft: `3px solid ${color}`,
-                    borderRadius: 6, textDecoration: "none",
-                  }}>
-                  <BookOpen size={18} style={{ color, flexShrink: 0 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontFamily: "'Barlow Condensed', sans-serif",
-                      fontSize: 14, fontWeight: 600, color: "var(--text-primary)",
-                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                    }}>
-                      {doc.title || doc.type}
-                    </div>
-                    <div style={{ display: "flex", gap: 8, marginTop: 2, alignItems: "center" }}>
-                      <span style={{
-                        fontFamily: "'Barlow Condensed', sans-serif",
-                        fontSize: 10, fontWeight: 600, color,
-                        background: color + "18", padding: "1px 7px",
-                        borderRadius: 99, textTransform: "uppercase", letterSpacing: "0.06em",
-                      }}>
-                        {doc.type?.toUpperCase()}
-                      </span>
-                      {doc.source && (
-                        <span style={{
-                          fontFamily: "'Inter', sans-serif",
-                          fontSize: 11, color: "var(--text-muted)",
-                        }}>
-                          {doc.source}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <ExternalLink size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-                </a>
-              );
-            })}
+            {(documents || []).map((doc, i) => (
+              <DocCard key={i} doc={doc} />
+            ))}
           </div>
         </div>
       )}
@@ -176,7 +250,6 @@ export default function ManualsPage() {
         title="MANUALS"
         subtitle={`${entries.length} of 10 saved · Auto-populated from data plate reads`}
       />
-
       <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 10 }}>
         {entries.length === 0 ? (
           <div style={{
