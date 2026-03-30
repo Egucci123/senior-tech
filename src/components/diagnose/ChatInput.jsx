@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { Send, Loader2, Camera, Mic, X, FileText, RotateCcw } from "lucide-react";
 
-export default function ChatInput({ onSend, isLoading, onInvoice, invoiceGenerating, onNewChat }) {
+export default function ChatInput({ onSend, isLoading, onSummary, summaryGenerating, summaryReady, onNewChat }) {
   const [text, setText]           = useState("");
   const [images, setImages]       = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -160,28 +160,32 @@ export default function ChatInput({ onSend, isLoading, onInvoice, invoiceGenerat
         </button>
 
         <button
-          onClick={onInvoice}
-          disabled={!onInvoice || isLoading || invoiceGenerating}
+          onClick={onSummary}
+          disabled={isLoading || summaryGenerating}
           className="btn-press"
           style={{
             flex: 1, height: 48,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            background: invoiceGenerating ? "rgba(79,195,247,0.12)" : "var(--bg-elevated)",
-            border: "1px solid var(--border)",
+            background: summaryReady
+              ? "rgba(76,175,80,0.15)"
+              : summaryGenerating
+                ? "rgba(79,195,247,0.12)"
+                : "var(--bg-elevated)",
+            border: `1px solid ${summaryReady ? "var(--green)" : summaryGenerating ? "var(--blue)" : "var(--border)"}`,
             borderRadius: "0 6px 6px 0",
-            color: (!onInvoice || isLoading) ? "var(--text-muted)" : invoiceGenerating ? "var(--blue)" : "var(--text-secondary)",
-            cursor: onInvoice && !isLoading ? "pointer" : "not-allowed",
-            opacity: !onInvoice ? 0.45 : 1,
+            color: summaryReady ? "var(--green)" : summaryGenerating ? "var(--blue)" : "var(--text-secondary)",
+            cursor: isLoading ? "not-allowed" : "pointer",
+            transition: "all 0.2s",
           }}
         >
-          {invoiceGenerating
+          {summaryGenerating
             ? <Loader2 size={15} color="var(--blue)" style={{ animation: "spin 1s linear infinite" }} />
             : <FileText size={15} />}
           <span style={{
             fontFamily: "'Barlow Condensed', sans-serif",
             fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em",
           }}>
-            INVOICE
+            SUMMARY
           </span>
         </button>
       </div>

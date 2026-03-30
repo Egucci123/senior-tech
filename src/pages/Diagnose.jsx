@@ -392,7 +392,8 @@ export default function DiagnosePage() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [started, setStarted]     = useState(loadStarted);
-  const [invoiceModal, setInvoiceModal] = useState({ open: false, text: "", loading: false });
+  const [summaryModal, setSummaryModal] = useState({ open: false, text: "", loading: false, customRequest: "" });
+  const [summaryReady, setSummaryReady] = useState(false);
   const [copied, setCopied] = useState(false);
   const ticketIdRef = useRef(localStorage.getItem(TICKET_KEY) || null);
   const chatEndRef  = useRef(null);
@@ -568,53 +569,39 @@ export default function DiagnosePage() {
     setIsLoading(false);
   };
 
-  const handleGenerateInvoice = async () => {
-    setInvoiceModal({ open: true, text: "", loading: true });
+  const handleGenerateSummary = async (customRequest = "") => {
+    setSummaryModal(s => ({ ...s, text: "", loading: true }));
     try {
       const transcript = messages
+        .filter(m => m.role !== "assistant" || m !== messages[0]) // skip welcome msg
         .map(m => `${m.role === "user" ? "Tech" : "Senior Tech"}: ${m.content}`)
         .join("\n\n");
       const profile = loadProfile();
+      const hasConversation = messages.filter(m => m.role === "user").length > 0;
+
+      const prompt = customRequest.trim()
+        ? `You are an HVAC service writer. Write a brief customer-facing summary that can be pasted directly into an invoicing app. The technician says: "${customRequest.trim()}"\n\nFormat as short bullet points:\n• Equipment: [brand/model if mentioned, else "See nameplate"]\n• Work performed: [what was done]\n• Recommendations: [if any]\n\nPlain language, no jargon, 5 lines max.`
+        : `You are an HVAC service writer. Based on the conversation below, write a brief customer-facing summary to paste into an invoicing app.\n\nFormat as short bullet points only — no headers, no extra text:\n• Equipment: [brand/model/type — or "See nameplate" if unknown]\n• Issue: [one sentence what customer reported]\n• Findings: [what was found — plain language]\n• Work performed: [what was done]\n• Recommendations: [next steps or parts needed, or "None"]\n\nKeep it under 8 lines. No jargon. If minimal info, keep it brief.\n\nConversation:\n${transcript || "(No conversation — tech used app for reference only.)"}`;
+
       const response = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are a professional HVAC service writer. Based on the following diagnostic conversation between a technician and an AI assistant, write a customer-facing service invoice description.
-
-Format it exactly like this:
----
-SERVICE DATE: [today's date]
-TECHNICIAN: ${profile.name || "HVAC Technician"}${profile.company ? `\nCOMPANY: ${profile.company}` : ""}
-
-EQUIPMENT:
-[Brand, model, serial number if mentioned. If unknown, write "See unit nameplate."]
-
-COMPLAINT:
-[One sentence — what the customer reported.]
-
-FINDINGS:
-[2-4 bullet points of what was found during diagnosis. Use plain language a homeowner understands. No jargon.]
-
-WORK PERFORMED:
-[Bullet list of actions taken. If still diagnosing, write "Diagnostic in progress — see technician notes."]
-
-RECOMMENDATIONS:
-[Any follow-up items, repairs needed, or parts to order. If none, write "None at this time."]
-
-NOTES:
-[Any safety concerns or urgent items flagged during the visit.]
----
-
-Conversation:
-${transcript}`,
+        prompt,
         model: "claude_haiku_4_5",
-        max_tokens: 500,
+        max_tokens: 350,
       });
-      setInvoiceModal({ open: true, text: response, loading: false });
+      setSummaryModal(s => ({ ...s, text: response, loading: false }));
+      setSummaryReady(true);
     } catch {
-      setInvoiceModal({ open: true, text: "Could not generate invoice — check your connection.", loading: false });
+      setSummaryModal(s => ({ ...s, text: "Could not generate summary — check your connection.", loading: false }));
     }
   };
 
-  const handleCopyInvoice = () => {
-    navigator.clipboard.writeText(invoiceModal.text).then(() => {
+  const handleOpenSummary = () => {
+    setSummaryModal({ open: true, text: "", loading: true, customRequest: "" });
+    handleGenerateSummary("");
+  };
+
+  const handleCopySummary = () => {
+    navigator.clipboard.writeText(summaryModal.text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -650,6 +637,7 @@ ${transcript}`,
     localStorage.removeItem(TICKET_KEY);
     clearDataPlate();
     setDataPlate(null);
+    setSummaryReady(false);
     const welcome = makeWelcome();
     setMessages([welcome]);
     saveMsgs([welcome]);
@@ -762,25 +750,26 @@ ${transcript}`,
       <ChatInput
         onSend={sendMessage}
         isLoading={isLoading}
-        onInvoice={started ? handleGenerateInvoice : null}
-        invoiceGenerating={invoiceModal.loading}
+        onSummary={handleOpenSummary}
+        summaryGenerating={summaryModal.loading}
+        summaryReady={summaryReady}
         onNewChat={started ? handleNewChat : null}
       />
 
-      {/* Invoice Modal */}
-      {invoiceModal.open && (
+      {/* Summary Modal */}
+      {summaryModal.open && (
         <div style={{
           position: "fixed", inset: 0, zIndex: 200,
           background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)",
           display: "flex", alignItems: "flex-end", justifyContent: "center",
-        }} onClick={() => setInvoiceModal(s => ({ ...s, open: false }))}>
+        }} onClick={() => setSummaryModal(s => ({ ...s, open: false }))}>
           <div
             style={{
               width: "100%", maxWidth: 600,
               background: "var(--bg-card)",
-              borderTop: "2px solid var(--blue)",
+              borderTop: `2px solid ${summaryReady ? "var(--green)" : "var(--blue)"}`,
               borderRadius: "16px 16px 0 0",
-              maxHeight: "80dvh", display: "flex", flexDirection: "column",
+              maxHeight: "85dvh", display: "flex", flexDirection: "column",
             }}
             onClick={e => e.stopPropagation()}
           >
@@ -792,18 +781,18 @@ ${transcript}`,
               <span style={{
                 fontFamily: "'Barlow Condensed', sans-serif",
                 fontSize: 15, fontWeight: 900, textTransform: "uppercase",
-                letterSpacing: "0.1em", color: "var(--blue)",
-              }}>INVOICE SUMMARY</span>
+                letterSpacing: "0.1em", color: summaryReady ? "var(--green)" : "var(--blue)",
+              }}>CUSTOMER SUMMARY</span>
               <div style={{ display: "flex", gap: 8 }}>
-                {!invoiceModal.loading && invoiceModal.text && (
+                {!summaryModal.loading && summaryModal.text && (
                   <button
-                    onClick={handleCopyInvoice}
+                    onClick={handleCopySummary}
                     style={{
                       display: "flex", alignItems: "center", gap: 6,
                       padding: "6px 14px", borderRadius: 6,
-                      background: copied ? "rgba(76,175,80,0.15)" : "rgba(79,195,247,0.12)",
-                      border: `1px solid ${copied ? "var(--green)" : "var(--blue)"}`,
-                      color: copied ? "var(--green)" : "var(--blue)",
+                      background: copied ? "rgba(76,175,80,0.2)" : "rgba(76,175,80,0.12)",
+                      border: "1px solid var(--green)",
+                      color: "var(--green)",
                       fontFamily: "'Barlow Condensed', sans-serif",
                       fontSize: 12, fontWeight: 700, textTransform: "uppercase",
                       letterSpacing: "0.08em", cursor: "pointer",
@@ -813,7 +802,7 @@ ${transcript}`,
                   </button>
                 )}
                 <button
-                  onClick={() => setInvoiceModal(s => ({ ...s, open: false }))}
+                  onClick={() => setSummaryModal(s => ({ ...s, open: false }))}
                   style={{
                     width: 32, height: 32, borderRadius: 6,
                     background: "var(--bg-elevated)", border: "1px solid var(--border)",
@@ -826,28 +815,68 @@ ${transcript}`,
               </div>
             </div>
 
+            {/* Custom request input */}
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={summaryModal.customRequest}
+                  onChange={e => setSummaryModal(s => ({ ...s, customRequest: e.target.value }))}
+                  onKeyDown={e => { if (e.key === "Enter") handleGenerateSummary(summaryModal.customRequest); }}
+                  placeholder='e.g. "replaced dual run capacitor on York 5-ton condenser"'
+                  style={{
+                    flex: 1, background: "var(--bg-elevated)", border: "1px solid var(--border)",
+                    borderRadius: 6, padding: "9px 12px",
+                    color: "var(--text-primary)", fontFamily: "'Inter', sans-serif", fontSize: 13,
+                    outline: "none",
+                  }}
+                  onFocus={e => { e.target.style.borderColor = "var(--blue)"; }}
+                  onBlur={e =>  { e.target.style.borderColor = "var(--border)"; }}
+                />
+                <button
+                  onClick={() => handleGenerateSummary(summaryModal.customRequest)}
+                  disabled={summaryModal.loading}
+                  style={{
+                    padding: "0 14px", borderRadius: 6,
+                    background: "rgba(79,195,247,0.12)", border: "1px solid var(--blue)",
+                    color: "var(--blue)",
+                    fontFamily: "'Barlow Condensed', sans-serif",
+                    fontSize: 12, fontWeight: 700, textTransform: "uppercase",
+                    letterSpacing: "0.08em", cursor: "pointer", whiteSpace: "nowrap",
+                  }}
+                >
+                  {summaryModal.loading ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : "GENERATE"}
+                </button>
+              </div>
+              <p style={{
+                fontFamily: "'Inter', sans-serif", fontSize: 11, color: "var(--text-muted)",
+                margin: "6px 0 0", lineHeight: 1.4,
+              }}>
+                Describe the job or leave blank to summarize from conversation
+              </p>
+            </div>
+
             {/* Body */}
             <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-              {invoiceModal.loading ? (
+              {summaryModal.loading ? (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "32px 0" }}>
                   <Loader2 size={28} color="var(--blue)" style={{ animation: "spin 1s linear infinite" }} />
                   <span style={{
                     fontFamily: "'Barlow Condensed', sans-serif",
                     fontSize: 13, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em",
-                  }}>GENERATING INVOICE...</span>
+                  }}>WRITING SUMMARY...</span>
                 </div>
               ) : (
                 <pre style={{
                   fontFamily: "'Inter', sans-serif", fontSize: 13,
-                  color: "var(--text-primary)", lineHeight: 1.6,
+                  color: "var(--text-primary)", lineHeight: 1.7,
                   whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0,
                 }}>
-                  {invoiceModal.text}
+                  {summaryModal.text}
                 </pre>
               )}
             </div>
 
-            {!invoiceModal.loading && invoiceModal.text && (
+            {!summaryModal.loading && summaryModal.text && (
               <div style={{ padding: "10px 16px 20px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
                 <p style={{
                   fontFamily: "'Barlow Condensed', sans-serif",
