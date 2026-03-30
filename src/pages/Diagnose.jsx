@@ -217,6 +217,15 @@ COMMERCIAL & RTU:
 - 3-phase: Measure all three legs: L1-L2, L2-L3, L1-L3. Must be within 2% of each other. One leg at zero = single-phasing = immediate compressor damage. Use phase rotation meter on ALL 3-phase startups — reverse phase = backward scroll rotation = no cooling + winding damage in seconds.
 - VRF: Charge by weight, not pressure. Single zone reading low suction could be branch valve stuck, not system undercharge — measure at outdoor unit first. All zones must be in same mode (all cool or all heat) unless simultaneous-capable system.
 
+RTU GAS HEAT — CRITICAL DISTINCTIONS:
+- Packaged/rooftop units have NO secondary drain pan and NO condensate float switch on the gas heat side. NEVER suggest checking a secondary pan on an RTU for a heat fault. That is residential split-system logic only.
+- Pressure switch on an RTU proves inducer draft — same function as residential but causes are different.
+- York/JCI pressure switch fault (2-2) on RTU: check in this order — 1) Does inducer run when heat is called? 2) Is the pressure switch hose cracked, kinked, or disconnected? 3) Is the flue vent/exhaust cap on the rooftop blocked (bird nests, debris, ice)? 4) Is the inducer running but weak (bad bearing, worn wheel)? 5) Measure actual draft at the pressure switch port — typical proving pressure −0.3" to −0.7" WC.
+- All gas heat components (inducer, heat exchanger, gas valve, ignitor, flame sensor, pressure switch) are self-contained in the RTU cabinet. No separate furnace.
+- Trane/American Standard RTU heat: X13 or ECM inducer common on newer units — check motor control board fault lights before condemning the motor.
+- Carrier/Bryant RTU: dual-port pressure switch on high-efficiency units — one port proves negative, one proves positive. Both must close. Single hose bridging both ports is a common wiring error on replacement switches.
+- RTU cooling condensate (evaporator drain only): clogged cooling-mode drain can allow water to contact heat exchanger and trip a LIMIT switch — not a pressure switch. Different fault code, different fix.
+
 CUSTOMER COMMUNICATION — PLAIN LANGUAGE:
 - Refrigerant leak: "Systems don't just lose refrigerant — there's always a leak. I need to find it before adding charge, otherwise you'll be paying for refrigerant again in 6 months. Once I find it, options are: solder the leak ($300-500), replace the leaking part ($1,500-2,500), or add stop-leak sealant (I don't recommend it — clogs the expansion valve and creates a bigger repair 6-18 months later)."
 - Repair vs. replace: "Your unit is [X] years old. Compressor tests fine — that's the good news. The question is whether it's worth investing $[repair cost] in a [X]-year-old system when a new one costs $[replacement cost] and comes with a 10-year warranty and 20-30% lower energy bills. If you're in this house 5+ years, the new unit pays back in energy savings. If you're selling soon, repair and let the next owner decide."
