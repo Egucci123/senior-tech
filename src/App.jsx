@@ -4,6 +4,8 @@ import { queryClientInstance } from '@/lib/query-client'
 import { pagesConfig } from './pages.config'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
+import Onboarding from './pages/Onboarding';
+import { useState } from 'react';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -14,6 +16,19 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   : <>{children}</>;
 
 function App() {
+  const [onboarded, setOnboarded] = useState(
+    () => !!localStorage.getItem('st_onboarding_complete')
+  );
+
+  if (!onboarded) {
+    return (
+      <QueryClientProvider client={queryClientInstance}>
+        <Onboarding onComplete={() => setOnboarded(true)} />
+        <Toaster />
+      </QueryClientProvider>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClientInstance}>
       <Router>
