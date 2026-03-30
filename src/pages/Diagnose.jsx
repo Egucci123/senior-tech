@@ -187,7 +187,48 @@ SAFETY — NON-NEGOTIABLE:
 - LOTO before any component work: lock out at breaker, verify zero-energy with meter. Never trust the equipment switch alone.
 - A2L refrigerants (R-32, R-454B): mildly flammable — no ignition sources, ventilate enclosed spaces before opening system.
 - CO detector on every gas appliance call. Non-zero ambient CO with heat running = investigate before leaving.
-- Never bypass pressure switches, limit switches, or rollout switches.`;
+- Never bypass pressure switches, limit switches, or rollout switches.
+
+ADDITIONAL BRAND KNOWLEDGE:
+- York/JCI: B-terminal (heating) on heat pumps — same as Rheem. Blink codes on legacy outdoor board: 1=contactor stuck, 2=compressor overload, 3=pressure switch stuck. Fan capacitor failure = slow fan = false high-head overcharge diagnosis.
+- Daikin/Goodman/Amana: Fixed orifice piston sizes are NON-STANDARD — never swap pistons between units even same tonnage. P6=compressor lock. Charge R-410A to SC not SH on variable-tonnage units.
+- Fujitsu: dF during defrost is NORMAL (only diagnose if persists >15 min). Specs are weight-based — charge by scale. F1=outdoor sensor, F4=low temp protection, F5=high pressure cutout.
+- Lennox: E217=blower PWM fault (check tach wire before replacing ECM). E212=high pressure at 420+ psig R-410A (lower threshold than competitors). ComfortSense thermostat can show false low-voltage if transformer is marginal — always measure under full load.
+- Bosch: B-terminal (heating) on heat pumps. E13=low voltage at startup — measure 24V secondary under compressor load, not idle. Multi-zone communication uses 16-circuit protocol; wiring twist in conduit = E1 comm error on new installs.
+- ICP/Heil/Tempstar/Arcoaire: Same unit, different regional name — parts interchangeable. Control fuse is 3A (not 5A). Scroll compressor bearing wear = fluttering on startup with normal pressures but creeping amp draw.
+
+INTERMITTENT & GHOST FAULTS:
+- System works when you arrive: "It was working this morning" = intermittent electrical. Pressures will be normal. Check loose terminals, corroded connections, nuisance relay.
+- Intermittent low voltage: Measure 24V at contactor coil WITH compressor running (not idle). Marginal transformer sags 3-5V on inrush = contactor chatters = thermal overload. Fix: higher VA transformer or check wire gauge on long low-voltage runs.
+- Intermittent pressure switch stuck: Low-ambient overnight = refrigerant pressure drops = switch contacts stick. System won't start at 7AM, fine by 10AM when solar heating raises pressure. Fix: crankcase heater keeps oil/pressure up overnight.
+- Loose compressor terminal: Amp draw normal on one visit, trips thermal OL on next. Cut old crimp, replace with new spade terminal + dielectric grease. If corrosion returned = replace all terminals + run cap + pressure switch in same visit.
+- Reversing valve stuck mid-stroke: Both pressures equalized (200-250 psig on both sides), audible hiss at valve body. Gently tap valve body with rubber mallet while solenoid energized. If pressures separate = confirmed stuck valve. Temporary fix only — replace the valve.
+- Thermostat intermittently dropping signal: Measure voltage at Y terminal WITH system running. Should be steady 24V. Flickering = thermostat mechanical wear, dead battery, or staple through wire in wall. Replace thermostat before chasing anything else.
+- High pressure switch nuisance trips on hot days only: SC is 16-18°F (should be 8-15°F). Marginally overcharged — only shows above threshold on 95°F days. Recover 0.5 oz, retest.
+
+NEW REFRIGERANTS — A2L SAFETY:
+- R-454B (Puron Advance): R-410A replacement in new equipment 2025+. Pressures nearly identical to R-410A. A2L = mildly flammable. No ignition sources or open flames within 6 ft. Charge as liquid by weight — pressure tables unreliable. Charge to SC target (8-12°F), not SH. POE oil only. Evacuation to 500 microns mandatory before charge (mixed refrigerant = wrong saturation curve, TXV hunting).
+- R-32: 25-30% HIGHER pressures than R-410A (suction 165-180 psig / discharge 390-450 psig). Requires gauges rated for these pressures. Weight-based charge only. A2L protocols same as R-454B. Never retrofit R-32 into an R-410A system — condenser and lineset not rated for pressure.
+- A2L on all calls: Evacuate non-essential personnel. No hot work within 20 ft. Use A2L-rated recovery equipment with correct cartridge. Weigh and document every charge. Moisture + A2L = acid formation 10-15% faster than R-410A — evacuation is non-negotiable.
+
+COMMERCIAL & RTU:
+- RTU cooling sequence: Outdoor fan runs 30-60 sec BEFORE compressor (pre-stabilize head pressure). If compressor trips immediately = high pressure fault, not charge issue. Check economizer first on days below 65°F outdoor.
+- Economizer: Damper stuck open on hot day = can't cool (system runs but no delta-T). Damper stuck closed = no free cooling but unit cools normally. OA sensor failed = economizer won't activate in cool weather. MA sensor fouled (5-10°F offset) = hunting, intermittent short cycles.
+- 3-phase: Measure all three legs: L1-L2, L2-L3, L1-L3. Must be within 2% of each other. One leg at zero = single-phasing = immediate compressor damage. Use phase rotation meter on ALL 3-phase startups — reverse phase = backward scroll rotation = no cooling + winding damage in seconds.
+- VRF: Charge by weight, not pressure. Single zone reading low suction could be branch valve stuck, not system undercharge — measure at outdoor unit first. All zones must be in same mode (all cool or all heat) unless simultaneous-capable system.
+
+CUSTOMER COMMUNICATION — PLAIN LANGUAGE:
+- Refrigerant leak: "Systems don't just lose refrigerant — there's always a leak. I need to find it before adding charge, otherwise you'll be paying for refrigerant again in 6 months. Once I find it, options are: solder the leak ($300-500), replace the leaking part ($1,500-2,500), or add stop-leak sealant (I don't recommend it — clogs the expansion valve and creates a bigger repair 6-18 months later)."
+- Repair vs. replace: "Your unit is [X] years old. Compressor tests fine — that's the good news. The question is whether it's worth investing $[repair cost] in a [X]-year-old system when a new one costs $[replacement cost] and comes with a 10-year warranty and 20-30% lower energy bills. If you're in this house 5+ years, the new unit pays back in energy savings. If you're selling soon, repair and let the next owner decide."
+- Heat exchanger crack: "I found a crack in the heat exchanger. That means combustion gases — including CO — are mixing into the air your family is breathing. You can't smell it, but I measured [X ppm] CO in the supply air. The only fix is a new furnace. I know that's not what you wanted to hear. This isn't a scare tactic — it's a safety issue I can't in good conscience ignore."
+- Overcharge: "Your system actually has TOO MUCH refrigerant — like overfilling an engine with oil. It raises the pressure, stresses the compressor, and wastes electricity. The fix is simple: I recover the excess (30 min, $200-300) and you're done."
+
+INSTALLATION MISTAKES & CALLBACKS:
+- Moisture in system: Incomplete evacuation = acid formation in 3-6 months. Signs: brown/black POE oil, green copper discoloration inside lines, sludge at TXV. Fix: replace compressor, flush lineset, new drier, full evacuation.
+- Mixed refrigerant: Wrong bottle grabbed. Signs: pressures don't match expected range for ambient temp + refrigerant type. Fix: recover to waste tank, nitrogen purge, full evacuation, recharge correct refrigerant by weight.
+- Wrong oil: Mineral oil in R-410A system = sludge + acid. POE in R-22 system = sludge. Nearly impossible to fully flush — compressor replacement usually required.
+- Nitrogen left in system: Non-condensable gas trapped = high head pressure, system "cools but not well." Misdiagnosed as overcharge. Full evacuation removes it.
+- Vacuum pump mistakes: Dirty pump oil = can't pull deep vacuum. Change pump oil every 50 hours. Target 250 microns (not 500) for contaminated or retrofitted systems. Micron gauge must be at the system, not the pump.`;
 
 
 
