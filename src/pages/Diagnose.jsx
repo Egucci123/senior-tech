@@ -454,8 +454,13 @@ export default function DiagnosePage() {
     }
 
     const src = msgHistory || messages;
-    const last10 = src.slice(-6);
-    const history = [...last10, { role: "user", content: newMsg }]
+    // Always include first 2 messages (data plate / opening context) + last 4 recent messages
+    const first2 = src.slice(0, 2);
+    const last4  = src.slice(-4);
+    const combined = src.length <= 6
+      ? src
+      : [...first2, ...last4.filter(m => !first2.includes(m))];
+    const history = [...combined, { role: "user", content: newMsg }]
       .map(m => {
         const photoNote = m.images?.length ? ' [sent photo]' : '';
         return `${m.role === "user" ? "Tech" : "Senior Tech"}: ${m.content}${photoNote}`;
@@ -470,11 +475,12 @@ export default function DiagnosePage() {
     };
   };
 
-  // Background: detect data plate in AI response and auto-fetch manuals
-  const tryAutoFetchManuals = async (aiResponse) => {
+  // Background: detect data plate in AI response (or user text) and auto-fetch manuals
+  const tryAutoFetchManuals = async (aiResponse, userText = "") => {
     try {
+      const combined = `${userText}\n\n${aiResponse}`.slice(0, 1800);
       const extraction = await base44.integrations.Core.InvokeLLM({
-        prompt: `Extract HVAC equipment identification from this technician response. Look for any brand name (Carrier, Trane, Lennox, Rheem, Ruud, Goodman, Amana, York, Daikin, Mitsubishi, Fujitsu, Bryant, Heil, etc.), model number, unit type (condenser, air handler, heat pump, furnace, mini-split, package unit), and refrigerant type. Return the fields you find. If absolutely no equipment brand is mentioned, return {"brand": null}.\n\nResponse:\n${aiResponse.slice(0, 1200)}`,
+        prompt: `Extract HVAC equipment identification from the following text. Look for any brand name (Carrier, Trane, Lennox, Rheem, Ruud, Goodman, Amana, York, Daikin, Mitsubishi, Fujitsu, Bryant, Heil, ICP, Tempstar, etc.), model number, unit type (condenser, air handler, heat pump, furnace, mini-split, package unit), and refrigerant type. Return the fields you find. If absolutely no equipment brand is mentioned, return {"brand": null}.\n\nText:\n${combined}`,
         model: "claude_haiku_4_5",
         max_tokens: 200,
         response_json_schema: {
@@ -554,7 +560,8 @@ export default function DiagnosePage() {
       });
       window.__trackCredit?.();
       setMessages(prev => [...prev, { role: "assistant", content: response }]);
-      if (imageUrls.length > 0) tryAutoFetchManuals(response);
+      // Fire extraction on every message until we have a saved data plate
+      if (imageUrls.length > 0 || !loadDataPlate()?.brand) tryAutoFetchManuals(response, text);
     } catch (err) {
       setMessages(prev => [...prev, { role: "assistant", content: "Connection error — check your network and try again." }]);
     }
