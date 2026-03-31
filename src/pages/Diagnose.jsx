@@ -435,7 +435,7 @@ export default function DiagnosePage() {
       });
       setMessages(prev => [...prev, { role: "assistant", content: response }]);
     } catch (err) {
-      setMessages(prev => [...prev, { role: "assistant", content: "Connection error — check your network and try again." }]);
+      setMessages(prev => [...prev, { role: "assistant", content: `Error: ${err.message}` }]);
     }
     setIsLoading(false);
   };

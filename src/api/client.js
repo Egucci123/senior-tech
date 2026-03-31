@@ -13,7 +13,11 @@ export const llm = async ({ prompt, system, model = 'claude_sonnet_4_6', max_tok
       response_json_schema: json || null,
     }),
   });
-  if (!res.ok) throw new Error(`API ${res.status}`);
+  if (!res.ok) {
+    let msg = `API ${res.status}`;
+    try { const d = await res.json(); if (d.error) msg = d.error; } catch {}
+    throw new Error(msg);
+  }
   const data = await res.json();
   return data.content;
 };
