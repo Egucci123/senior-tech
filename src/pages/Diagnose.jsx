@@ -351,12 +351,14 @@ export default function DiagnosePage() {
     return null;
   };
 
-  // After a photo message, extract unit info and auto-fetch manuals (background, silent)
-  const tryFetchManuals = async (sonnetResponse) => {
+  // After a photo message, extract unit info from the image and auto-fetch manuals (background)
+  const tryFetchManuals = async (imageUrls) => {
     if (loadDataPlate()?.brand) return; // already have unit locked
     try {
+      // Use the actual image — more reliable than parsing Sonnet's text response
       const extracted = await llm({
-        prompt: `Extract unit info from this HVAC diagnostic response. Return JSON only.\n\n${sonnetResponse}`,
+        prompt: "Extract from this HVAC nameplate. Return JSON only: brand, model, serial, unit_type, refrigerant_type, tonnage, voltage. Use null for any field not visible.",
+        images: imageUrls,
         model: "claude_haiku_4_5",
         max_tokens: 150,
         json: {
@@ -426,11 +428,20 @@ export default function DiagnosePage() {
         max_tokens: 500,
         ...(imageUrls.length > 0 ? { images: imageUrls } : {}),
       });
-      setMessages(prev => [...prev, { role: "assistant", content: response }]);
-      // If a photo was sent and we don't have unit info yet, extract + fetch manuals
-      if (imageUrls.length > 0) tryFetchManuals(response);
+      // Save immediately to localStorage so tab switches don't lose the response
+      setMessages(prev => {
+        const updated = [...prev, { role: "assistant", content: response }];
+        saveMsgs(updated);
+        return updated;
+      });
+      // If a photo was sent and we don't have unit info yet, extract from image + fetch manuals
+      if (imageUrls.length > 0) tryFetchManuals(imageUrls);
     } catch (err) {
-      setMessages(prev => [...prev, { role: "assistant", content: `Error: ${err.message}` }]);
+      setMessages(prev => {
+        const updated = [...prev, { role: "assistant", content: `Error: ${err.message}` }];
+        saveMsgs(updated);
+        return updated;
+      });
     }
     setIsLoading(false);
   };
