@@ -365,13 +365,14 @@ export default function DiagnosePage() {
     if (!file) return;
     e.target.value = "";
     setDpScanning(true);
+    let extracted = null;
     try {
       const file_url = await toBase64(file);
-      const extracted = await llm({
+      extracted = await llm({
         prompt: "Extract from this HVAC nameplate and return only raw JSON: brand, model, serial, unit_type, refrigerant_type, tonnage, voltage. Use null for any field not visible.",
         images: [file_url],
         model: "claude_sonnet_4_6",
-        max_tokens: 150,
+        max_tokens: 200,
         json: {
           type: "object",
           properties: {
@@ -385,46 +386,48 @@ export default function DiagnosePage() {
           }
         }
       });
+    } catch (err) {
+      // Show the real error in chat so the tech knows what happened
+      const errMsg = { role: "assistant", content: `Could not read data plate: ${err.message}. You can still describe the unit manually.` };
+      setMessages([errMsg]);
+    } finally {
+      setDpScanning(false);
+      setDpDismissed(true);
+    }
 
-      if (extracted?.brand) {
-        saveDataPlate(extracted);
-        setDataPlate(extracted);
-        const welcome = makeWelcome(extracted);
-        setMessages([welcome]);
-        saveMsgs([welcome]);
-        // Dismiss overlay immediately — show chat right away
-        setDpDismissed(true);
-        setDpScanning(false);
+    if (!extracted?.brand) return;
 
-        // Fetch manuals in background — inject chat message when done
-        try {
-          const brand = extracted.brand.trim();
-          const model = extracted.model?.trim() || '';
-          const res = await fetch(`/api/find-manual?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`);
-          const { manuals } = await res.json();
-          const docs = (manuals?.length > 0 ? manuals.map(m => ({ ...m, source: "ManualsLib" })) : []);
-          const mfg = getMfgLink(brand);
-          if (mfg) docs.push(mfg);
-          if (docs.length > 0) {
-            ManualsStore.save({
-              id: Date.now().toString(),
-              created_date: new Date().toISOString(),
-              unit: extracted,
-              documents: docs,
-              unit_summary: `${brand}${model ? ' ' + model : ''}${extracted.unit_type ? ' — ' + extracted.unit_type : ''}`,
-            });
-            const lines = docs.map(d => `- [${d.title}](${d.url})`).join('\n');
-            setMessages(prev => [...prev, {
-              role: "assistant",
-              content: `**Manuals loaded for ${brand}${model ? ' ' + model : ''}:**\n${lines}\n\nAvailable in the Manuals tab.`,
-            }]);
-          }
-        } catch { /* silent */ }
-        return;
+    // Extraction succeeded — set up chat with unit context
+    saveDataPlate(extracted);
+    setDataPlate(extracted);
+    const welcome = makeWelcome(extracted);
+    setMessages([welcome]);
+    saveMsgs([welcome]);
+
+    // Fetch manuals in background — inject chat message when done
+    try {
+      const brand = extracted.brand.trim();
+      const model = extracted.model?.trim() || '';
+      const res = await fetch(`/api/find-manual?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`);
+      const { manuals } = await res.json();
+      const docs = manuals?.length > 0 ? manuals.map(m => ({ ...m, source: "ManualsLib" })) : [];
+      const mfg = getMfgLink(brand);
+      if (mfg) docs.push(mfg);
+      if (docs.length > 0) {
+        ManualsStore.save({
+          id: Date.now().toString(),
+          created_date: new Date().toISOString(),
+          unit: extracted,
+          documents: docs,
+          unit_summary: `${brand}${model ? ' ' + model : ''}${extracted.unit_type ? ' — ' + extracted.unit_type : ''}`,
+        });
+        const lines = docs.map(d => `- [${d.title}](${d.url})`).join('\n');
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `**Manuals loaded for ${brand}${model ? ' ' + model : ''}:**\n${lines}\n\nAvailable in the Manuals tab.`,
+        }]);
       }
-    } catch { /* fail silently — let tech proceed */ }
-    setDpScanning(false);
-    setDpDismissed(true);
+    } catch { /* silent — manuals are a bonus, not critical */ }
   };
 
   const sendMessage = async (text, imageUrls = []) => {
