@@ -1,10 +1,9 @@
 import React from "react";
 import { Outlet, NavLink, useLocation } from "react-router-dom";
-import { Microscope, History, BookOpen, Settings, ScanLine } from "lucide-react";
+import { Microscope, History, BookOpen, Settings } from "lucide-react";
 
 const NAV_ITEMS = [
   { name: "DIAGNOSE", path: "/diagnose", Icon: Microscope },
-  { name: "SCAN UNIT", path: "/scan",    Icon: ScanLine },
   { name: "MANUALS",  path: "/manuals",  Icon: BookOpen },
   { name: "HISTORY",  path: "/history",  Icon: History },
   { name: "SETTINGS", path: "/settings", Icon: Settings },

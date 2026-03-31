@@ -392,8 +392,11 @@ export default function DiagnosePage() {
         const welcome = makeWelcome(extracted);
         setMessages([welcome]);
         saveMsgs([welcome]);
+        // Dismiss overlay immediately — show chat right away
+        setDpDismissed(true);
+        setDpScanning(false);
 
-        // Fetch manuals in background — silent fail
+        // Fetch manuals in background — inject chat message when done
         try {
           const brand = extracted.brand.trim();
           const model = extracted.model?.trim() || '';
@@ -410,8 +413,14 @@ export default function DiagnosePage() {
               documents: docs,
               unit_summary: `${brand}${model ? ' ' + model : ''}${extracted.unit_type ? ' — ' + extracted.unit_type : ''}`,
             });
+            const lines = docs.map(d => `- [${d.title}](${d.url})`).join('\n');
+            setMessages(prev => [...prev, {
+              role: "assistant",
+              content: `**Manuals loaded for ${brand}${model ? ' ' + model : ''}:**\n${lines}\n\nAvailable in the Manuals tab.`,
+            }]);
           }
         } catch { /* silent */ }
+        return;
       }
     } catch { /* fail silently — let tech proceed */ }
     setDpScanning(false);
