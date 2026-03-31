@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Wrench } from "lucide-react";
 import TicketCard from "../components/history/TicketCard";
-import { TicketStore } from "../components/ticketStore";
+import { TicketStore } from '../store/tickets';
 import { useNavigate } from "react-router-dom";
-import { createPageUrl } from "@/utils";
 
 const FILTERS = [
   { key: "all",         label: "ALL" },
@@ -64,7 +63,7 @@ export default function HistoryPage() {
             fontSize: 10, fontWeight: 600, color: "var(--text-muted)",
             textTransform: "uppercase", letterSpacing: "0.12em",
           }}>
-            {visible.length} JOB{visible.length !== 1 ? "S" : ""} · {tickets.length} OF 10 STORED
+            {visible.length} JOB{visible.length !== 1 ? "S" : ""} · {tickets.length} OF 5 STORED
           </span>
         </div>
       )}
@@ -96,7 +95,7 @@ export default function HistoryPage() {
             </div>
             {filter === "all" && (
               <button
-                onClick={() => navigate(createPageUrl("Diagnose"))}
+                onClick={() => navigate('/diagnose')}
                 className="btn-press"
                 style={{
                   padding: "12px 28px", borderRadius: 8,

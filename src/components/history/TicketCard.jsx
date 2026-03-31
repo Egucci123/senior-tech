@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { format } from "date-fns";
 import { ChevronDown, ChevronUp, AlertTriangle, Zap, Settings, Wrench } from "lucide-react";
-import { TicketStore } from "../ticketStore";
+import { TicketStore } from '../../store/tickets';
 
 const STATUS_MAP = {
   resolved:    { label: "COMPLETE",    color: "var(--green)" },

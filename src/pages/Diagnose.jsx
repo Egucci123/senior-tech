@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { llm, toBase64 } from '../api/client';
 import { Loader2, Wrench, X, Copy, Check, Camera, Upload } from "lucide-react";
 import ChatBubble from "../components/diagnose/ChatBubble";
 import ChatInput from "../components/diagnose/ChatInput";
-import { TicketStore } from "../components/ticketStore";
-import { ManualsStore } from "../components/manualsStore";
+import { TicketStore } from '../store/tickets';
+import { ManualsStore } from '../store/manuals';
 
 const MSGS_KEY = 'diag_messages_v2';
 const STARTED_KEY = 'diag_started_v2';
@@ -366,13 +366,13 @@ export default function DiagnosePage() {
     e.target.value = "";
     setDpScanning(true);
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      const extracted = await base44.integrations.Core.InvokeLLM({
+      const file_url = await toBase64(file);
+      const extracted = await llm({
         prompt: "Extract from this HVAC nameplate and return only raw JSON: brand, model, serial, unit_type, refrigerant_type, tonnage, voltage. Use null for any field not visible.",
-        file_urls: [file_url],
+        images: [file_url],
         model: "claude_sonnet_4_6",
         max_tokens: 150,
-        response_json_schema: {
+        json: {
           type: "object",
           properties: {
             brand:            { type: "string" },
@@ -426,12 +426,12 @@ export default function DiagnosePage() {
     setIsLoading(true);
     try {
       const { system, userPrompt } = buildMessages(text, messages);
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await llm({
         prompt: userPrompt,
         system,
         model: "claude_sonnet_4_6",
         max_tokens: 800,
-        ...(imageUrls.length > 0 ? { file_urls: imageUrls } : {}),
+        ...(imageUrls.length > 0 ? { images: imageUrls } : {}),
       });
       setMessages(prev => [...prev, { role: "assistant", content: response }]);
     } catch (err) {
@@ -454,7 +454,7 @@ export default function DiagnosePage() {
         ? `You are an HVAC service writer. Write a brief customer-facing summary that can be pasted directly into an invoicing app. The technician says: "${customRequest.trim()}"\n\nFormat as short bullet points:\n• Equipment: [brand/model if mentioned, else "See nameplate"]\n• Work performed: [what was done]\n• Recommendations: [if any]\n\nPlain language, no jargon, 5 lines max.`
         : `You are an HVAC service writer. Based on the conversation below, write a brief customer-facing summary to paste into an invoicing app.\n\nFormat as short bullet points only — no headers, no extra text:\n• Equipment: [brand/model/type — or "See nameplate" if unknown]\n• Issue: [one sentence what customer reported]\n• Findings: [what was found — plain language]\n• Work performed: [what was done]\n• Recommendations: [next steps or parts needed, or "None"]\n\nKeep it under 8 lines. No jargon. If minimal info, keep it brief.\n\nConversation:\n${transcript || "(No conversation — tech used app for reference only.)"}`;
 
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await llm({
         prompt,
         model: "claude_haiku_4_5",
         max_tokens: 350,
@@ -485,11 +485,11 @@ export default function DiagnosePage() {
         const transcript = messages.slice(0, 12)
           .map(m => `${m.role === "user" ? "Tech" : "Senior Tech"}: ${m.content}`)
           .join("\n\n");
-        const s = await base44.integrations.Core.InvokeLLM({
+        const s = await llm({
           prompt: `Extract structured info from this HVAC diagnostic conversation. Return JSON only. If a field isn't mentioned, return null for it.\n\n${transcript}`,
           model: "claude_haiku_4_5",
           max_tokens: 150,
-          response_json_schema: {
+          json: {
             type: "object",
             properties: {
               brand:      { type: "string" },

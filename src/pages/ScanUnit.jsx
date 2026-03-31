@@ -1,26 +1,31 @@
 import React, { useState, useRef, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { llm, toBase64 } from '../api/client';
 import { Camera, Upload, Loader2, FileText, Shield, Leaf, ExternalLink, X } from "lucide-react";
 import DocViewer from "../components/scan/DocViewer";
-import PageHeader from "../components/shared/PageHeader";
 import ScanViewfinder from "../components/scan/ScanViewfinder";
 import UnitCard from "../components/scan/UnitCard";
-import { AppState } from "../components/appState";
 
+const SCAN_STATE_KEY = 'scan_state_v1';
 
+function loadScanState() {
+  try { return JSON.parse(localStorage.getItem(SCAN_STATE_KEY) || 'null'); } catch { return null; }
+}
+function saveScanState(unitData, documents) {
+  try { localStorage.setItem(SCAN_STATE_KEY, JSON.stringify({ unitData, documents })); } catch {}
+}
 
 export default function ScanUnitPage() {
-  const [unitData, setUnitData]   = useState(() => AppState.get('scan_unitData'));
-  const [documents, setDocuments] = useState(() => AppState.get('scan_documents'));
+  const saved = loadScanState();
+  const [unitData, setUnitData]   = useState(() => saved?.unitData || null);
+  const [documents, setDocuments] = useState(() => saved?.documents || null);
   const [isScanning, setIsScanning]   = useState(false);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
   const [viewingDoc, setViewingDoc] = useState(null);
   const fileInputRef   = useRef(null);
   const uploadInputRef = useRef(null);
 
-  // Persist to AppState on every change
-  useEffect(() => { AppState.set('scan_unitData',  unitData);  }, [unitData]);
-  useEffect(() => { AppState.set('scan_documents', documents); }, [documents]);
+  // Persist to localStorage on every change
+  useEffect(() => { saveScanState(unitData, documents); }, [unitData, documents]);
 
   const clearUnit = () => {
     setUnitData(null);
@@ -31,14 +36,14 @@ export default function ScanUnitPage() {
     setIsScanning(true);
     setUnitData(null); setDocuments(null);
 
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
+    const file_url = await toBase64(file);
 
-    const extracted = await base44.integrations.Core.InvokeLLM({
+    const extracted = await llm({
       prompt: "Extract from this HVAC nameplate and return only raw JSON no markdown: brand, model_number, serial_number, unit_type, tonnage, btuh, voltage, phase, amps_rla, amps_mca, amps_mop, refrigerant_type, charge_oz, seer, manufacture_date. Use null for any field not visible.",
-      file_urls: [file_url],
+      images: [file_url],
       model: "claude_sonnet_4_6",
       max_tokens: 350,
-      response_json_schema: {
+      json: {
         type: "object",
         properties: {
           brand: { type: "string" }, model_number: { type: "string" },
@@ -96,7 +101,18 @@ export default function ScanUnitPage() {
 
   return (
     <div className="pb-4">
-      <PageHeader title="SCAN UNIT" subtitle="Nameplate → full tech brief in seconds" />
+      <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border)" }}>
+        <div style={{
+          fontFamily: "'Barlow Condensed', sans-serif",
+          fontSize: 22, fontWeight: 900, color: "var(--text-primary)",
+          textTransform: "uppercase", letterSpacing: "0.04em",
+        }}>SCAN UNIT</div>
+        <div style={{
+          fontFamily: "'Barlow Condensed', sans-serif",
+          fontSize: 11, color: "var(--text-muted)",
+          textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 2,
+        }}>Nameplate → full tech brief in seconds</div>
+      </div>
 
       <div className="px-4 space-y-4">
         {/* Viewfinder */}

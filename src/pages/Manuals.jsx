@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { BookOpen, ExternalLink, FileText, X, Wrench } from "lucide-react";
-import PageHeader from "../components/shared/PageHeader";
-import { ManualsStore } from "../components/manualsStore";
+import { ManualsStore } from '../store/manuals';
 
 const DOC_COLORS = {
   install: "#4caf50",
@@ -246,10 +245,18 @@ export default function ManualsPage() {
 
   return (
     <div style={{ paddingBottom: 24 }}>
-      <PageHeader
-        title="MANUALS"
-        subtitle={`${entries.length} of 10 saved · Auto-populated from data plate reads`}
-      />
+      <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border)" }}>
+        <div style={{
+          fontFamily: "'Barlow Condensed', sans-serif",
+          fontSize: 22, fontWeight: 900, color: "var(--text-primary)",
+          textTransform: "uppercase", letterSpacing: "0.04em",
+        }}>MANUALS</div>
+        <div style={{
+          fontFamily: "'Barlow Condensed', sans-serif",
+          fontSize: 11, color: "var(--text-muted)",
+          textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 2,
+        }}>{entries.length} of 5 saved · Auto-populated from data plate reads</div>
+      </div>
       <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 10 }}>
         {entries.length === 0 ? (
           <div style={{

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Thermometer, Contrast, Globe, RefreshCw, ChevronRight } from "lucide-react";
-import { TicketStore } from "../components/ticketStore";
-import { ManualsStore } from "../components/manualsStore";
+import { TicketStore } from '../store/tickets';
+import { ManualsStore } from '../store/manuals';
 
 const DEFAULT_PROFILE = {
   name: "Field Tech",
