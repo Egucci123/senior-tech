@@ -369,6 +369,27 @@ export default function DiagnosePage() {
     return null;
   };
 
+  // Resize image to max 1600px and compress to JPEG — keeps it well under Anthropic's 5MB limit
+  const compressImage = (file) => new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 1600;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+        else                { width  = Math.round(width  * MAX / height); height = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+
   // Called when tech photographs or uploads data plate before starting the chat
   const handleDpPhoto = async (e) => {
     const file = e.target.files?.[0];
@@ -377,7 +398,7 @@ export default function DiagnosePage() {
     setDpScanning(true);
     let extracted = null;
     try {
-      const file_url = await toBase64(file);
+      const file_url = await compressImage(file);
       extracted = await llm({
         prompt: "Extract from this HVAC nameplate and return only raw JSON: brand, model, serial, unit_type, refrigerant_type, tonnage, voltage. Use null for any field not visible.",
         images: [file_url],
