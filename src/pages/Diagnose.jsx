@@ -249,7 +249,7 @@ function OnboardingScreen({ onComplete }) {
 export default function DiagnosePage() {
   const [profile, setProfile] = useState(loadProfile);
   const [dataPlate, setDataPlate] = useState(loadDataPlate);
-  const needsOnboarding = !profile?.name?.trim();
+  const needsOnboarding = false; // handled by /onboarding route in App.jsx
 
   const [messages, setMessages] = useState(() => {
     return loadMsgs() || [makeWelcome(loadDataPlate())];
