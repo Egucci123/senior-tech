@@ -798,7 +798,7 @@ function Screen4({ onNext }) {
 
 // ─── Screen 5 — Calibration & Welcome ────────────────────────────────────────
 
-function Screen5({ yearsRange, firstName, onStart, onExplore }) {
+function Screen5({ yearsRange, firstName, onStart }) {
   const exp = EXP_MAP[yearsRange] || EXP_MAP["4-7"];
   const msg = OPENING_MSG[exp.level];
   const desc = CALIBRATION_DESC[exp.level];
@@ -875,7 +875,6 @@ function Screen5({ yearsRange, firstName, onStart, onExplore }) {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <PrimaryBtn label="START DIAGNOSING" onClick={onStart} icon={<ChevronRight size={16} />} />
-        <SecondaryBtn label="EXPLORE THE APP FIRST" onClick={onExplore} />
       </div>
     </div>
   );
@@ -1030,7 +1029,6 @@ export default function Onboarding({ onComplete }) {
               yearsRange={collectedData.yearsRange}
               firstName={collectedData.firstName}
               onStart={finishOnboarding}
-              onExplore={finishOnboarding}
             />
           )}
         </>
