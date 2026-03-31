@@ -133,13 +133,15 @@ async function braveSearch(query, apiKey) {
     {
       headers: {
         'Accept': 'application/json',
-        'Accept-Encoding': 'gzip',
         'X-Subscription-Token': apiKey,
       },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(8000),
     }
   );
-  if (!resp.ok) return [];
+  if (!resp.ok) {
+    console.warn(`Brave search failed [${resp.status}]:`, await resp.text().catch(() => ''));
+    return [];
+  }
   const data = await resp.json();
   return data.web?.results || [];
 }
@@ -152,6 +154,7 @@ app.get("/api/find-manual", async (req, res) => {
     console.warn('BRAVE_API_KEY not set');
     return res.json({ manuals: [] });
   }
+  console.log(`[find-manual] brand="${brand}" model="${model}"`);
 
   const b = cleanBrand(brand);
   const tokens = modelTokens(model);
@@ -204,6 +207,7 @@ app.get("/api/find-manual", async (req, res) => {
     }
   }
 
+  console.log(`[find-manual] returning ${manuals.length} result(s)`);
   res.json({ manuals });
 });
 
