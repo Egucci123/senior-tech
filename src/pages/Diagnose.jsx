@@ -369,25 +369,40 @@ export default function DiagnosePage() {
     return null;
   };
 
-  // Resize image to max 1600px and compress to JPEG — keeps it well under Anthropic's 5MB limit
-  const compressImage = (file) => new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const MAX = 1600;
-      let { width, height } = img;
-      if (width > MAX || height > MAX) {
-        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
-        else                { width  = Math.round(width  * MAX / height); height = MAX; }
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width; canvas.height = height;
-      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL("image/jpeg", 0.82));
+  // Compress image to JPEG — always resolves, never rejects
+  // Uses FileReader as fallback if canvas fails (iOS PWA edge case)
+  const compressImage = (file) => new Promise((resolve) => {
+    const MAX = 1200;
+    const QUALITY = 0.75;
+
+    const tryCanvas = (dataUrl) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          if (width > MAX || height > MAX) {
+            if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+            else                { width  = Math.round(width  * MAX / height); height = MAX; }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width; canvas.height = height;
+          canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL("image/jpeg", QUALITY);
+          resolve(compressed);
+        } catch {
+          // Canvas failed — send the original FileReader data URL
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
     };
-    img.onerror = reject;
-    img.src = url;
+
+    // Always read via FileReader first (works on all iOS PWA contexts)
+    const reader = new FileReader();
+    reader.onload = (e) => tryCanvas(e.target.result);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
   });
 
   // Called when tech photographs or uploads data plate before starting the chat
@@ -399,6 +414,7 @@ export default function DiagnosePage() {
     let extracted = null;
     try {
       const file_url = await compressImage(file);
+      if (!file_url) throw new Error("Could not read image file.");
       extracted = await llm({
         prompt: "Extract from this HVAC nameplate and return only raw JSON: brand, model, serial, unit_type, refrigerant_type, tonnage, voltage. Use null for any field not visible.",
         images: [file_url],
