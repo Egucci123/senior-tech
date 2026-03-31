@@ -94,8 +94,18 @@ REFRIGERANT TRANSITION (regulatory facts — current as of 2026):
 
 function makeWelcome(dp) {
   if (dp?.brand) {
-    const unit = [dp.brand, dp.unit_type, dp.model ? `(${dp.model})` : null].filter(Boolean).join(' ');
-    return { role: "assistant", content: `**Senior Tech here.** Got the ${unit}. What's the complaint?` };
+    const lines = [
+      `**${[dp.brand, dp.unit_type].filter(Boolean).join(' ').toUpperCase()}**`,
+      dp.model            ? `- Model: ${dp.model}` : null,
+      dp.serial           ? `- Serial: ${dp.serial}` : null,
+      dp.refrigerant_type ? `- Refrigerant: ${dp.refrigerant_type}` : null,
+      dp.tonnage          ? `- Tonnage: ${dp.tonnage}` : null,
+      dp.voltage          ? `- Voltage: ${dp.voltage}` : null,
+    ].filter(Boolean).join('\n');
+    return {
+      role: "assistant",
+      content: `**Senior Tech here.** Read the nameplate:\n\n${lines}\n\nWhat's the complaint?`,
+    };
   }
   return {
     role: "assistant",
