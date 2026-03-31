@@ -315,12 +315,12 @@ export default function DiagnosePage() {
     }
 
     const src = msgHistory || messages;
-    // Always include first 3 messages (welcome + photo + Sonnet's data plate read) + last 4 recent
-    const first3 = src.slice(0, 3);
-    const last4  = src.slice(-4);
-    const combined = src.length <= 7
+    // first 2 messages + last 3 — full plate is in explicit ctx above, no need for deeper history
+    const first2 = src.slice(0, 2);
+    const last3  = src.slice(-3);
+    const combined = src.length <= 5
       ? src
-      : [...first3, ...last4.filter(m => !first3.includes(m))];
+      : [...first2, ...last3.filter(m => !first2.includes(m))];
     const history = [...combined, { role: "user", content: newMsg }]
       .map(m => {
         const photoNote = m.images?.length ? ' [sent photo]' : '';
@@ -423,7 +423,7 @@ export default function DiagnosePage() {
         prompt: userPrompt,
         system,
         model: "claude_sonnet_4_6",
-        max_tokens: 800,
+        max_tokens: 500,
         ...(imageUrls.length > 0 ? { images: imageUrls } : {}),
       });
       setMessages(prev => [...prev, { role: "assistant", content: response }]);
@@ -452,7 +452,7 @@ export default function DiagnosePage() {
       const response = await llm({
         prompt,
         model: "claude_haiku_4_5",
-        max_tokens: 350,
+        max_tokens: 200,
       });
       setSummaryModal(s => ({ ...s, text: response, loading: false }));
       setSummaryReady(true);
