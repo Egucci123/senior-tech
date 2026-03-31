@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
-import { llm, toBase64 } from '../api/client';
-import { Loader2, Wrench, X, Copy, Check, Camera, Upload } from "lucide-react";
+import { llm } from '../api/client';
+import { Loader2, Wrench, X, Copy, Check } from "lucide-react";
 import ChatBubble from "../components/diagnose/ChatBubble";
 import ChatInput from "../components/diagnose/ChatInput";
 import { TicketStore } from '../store/tickets';
@@ -92,24 +92,10 @@ REFRIGERANT TRANSITION (regulatory facts — current as of 2026):
 
 
 
-function makeWelcome(dp) {
-  if (dp?.brand) {
-    const lines = [
-      `**${[dp.brand, dp.unit_type].filter(Boolean).join(' ').toUpperCase()}**`,
-      dp.model            ? `- Model: ${dp.model}` : null,
-      dp.serial           ? `- Serial: ${dp.serial}` : null,
-      dp.refrigerant_type ? `- Refrigerant: ${dp.refrigerant_type}` : null,
-      dp.tonnage          ? `- Tonnage: ${dp.tonnage}` : null,
-      dp.voltage          ? `- Voltage: ${dp.voltage}` : null,
-    ].filter(Boolean).join('\n');
-    return {
-      role: "assistant",
-      content: `**Senior Tech here.** Read the nameplate:\n\n${lines}\n\nWhat's the complaint?`,
-    };
-  }
+function makeWelcome() {
   return {
     role: "assistant",
-    content: "**Senior Tech here.** Ready to diagnose.\n\nDescribe the issue, send a fault code, or photograph any gauge readings, wiring, or components.",
+    content: "**Senior Tech here.** Ready to diagnose.\n\nDescribe the unit and issue — or photograph the data plate, gauges, wiring, or fault codes and I'll read them.",
   };
 }
 
@@ -262,19 +248,15 @@ export default function DiagnosePage() {
   const needsOnboarding = false; // handled by /onboarding route in App.jsx
 
   const [messages, setMessages] = useState(() => {
-    return loadMsgs() || [makeWelcome(loadDataPlate())];
+    return loadMsgs() || [makeWelcome()];
   });
   const [isLoading, setIsLoading] = useState(false);
   const [started, setStarted]     = useState(loadStarted);
   const [summaryModal, setSummaryModal] = useState({ open: false, text: "", loading: false, customRequest: "" });
   const [summaryReady, setSummaryReady] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [dpScanning, setDpScanning]   = useState(false);
-  const [dpDismissed, setDpDismissed] = useState(() => !!loadDataPlate());
-  const ticketIdRef  = useRef(localStorage.getItem(TICKET_KEY) || null);
-  const chatEndRef   = useRef(null);
-  const dpCaptureRef = useRef(null);
-  const dpUploadRef  = useRef(null);
+  const ticketIdRef = useRef(localStorage.getItem(TICKET_KEY) || null);
+  const chatEndRef  = useRef(null);
 
   const handleOnboardingComplete = (newProfile) => {
     setProfile(newProfile);
@@ -369,114 +351,6 @@ export default function DiagnosePage() {
     return null;
   };
 
-  // Compress image to JPEG — always resolves, never rejects
-  // Uses FileReader as fallback if canvas fails (iOS PWA edge case)
-  const compressImage = (file) => new Promise((resolve) => {
-    const MAX = 1200;
-    const QUALITY = 0.75;
-
-    const tryCanvas = (dataUrl) => {
-      const img = new Image();
-      img.onload = () => {
-        try {
-          let { width, height } = img;
-          if (width > MAX || height > MAX) {
-            if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
-            else                { width  = Math.round(width  * MAX / height); height = MAX; }
-          }
-          const canvas = document.createElement("canvas");
-          canvas.width = width; canvas.height = height;
-          canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL("image/jpeg", QUALITY);
-          resolve(compressed);
-        } catch {
-          // Canvas failed — send the original FileReader data URL
-          resolve(dataUrl);
-        }
-      };
-      img.onerror = () => resolve(dataUrl);
-      img.src = dataUrl;
-    };
-
-    // Always read via FileReader first (works on all iOS PWA contexts)
-    const reader = new FileReader();
-    reader.onload = (e) => tryCanvas(e.target.result);
-    reader.onerror = () => resolve(null);
-    reader.readAsDataURL(file);
-  });
-
-  // Called when tech photographs or uploads data plate before starting the chat
-  const handleDpPhoto = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-    setDpScanning(true);
-    let extracted = null;
-    try {
-      const file_url = await compressImage(file);
-      if (!file_url) throw new Error("Could not read image file.");
-      extracted = await llm({
-        prompt: "Extract from this HVAC nameplate and return only raw JSON: brand, model, serial, unit_type, refrigerant_type, tonnage, voltage. Use null for any field not visible.",
-        images: [file_url],
-        model: "claude_sonnet_4_6",
-        max_tokens: 200,
-        json: {
-          type: "object",
-          properties: {
-            brand:            { type: "string" },
-            model:            { type: "string" },
-            serial:           { type: "string" },
-            unit_type:        { type: "string" },
-            refrigerant_type: { type: "string" },
-            tonnage:          { type: "string" },
-            voltage:          { type: "string" },
-          }
-        }
-      });
-    } catch (err) {
-      // Show the real error in chat so the tech knows what happened
-      const errMsg = { role: "assistant", content: `Could not read data plate: ${err.message}. You can still describe the unit manually.` };
-      setMessages([errMsg]);
-    } finally {
-      setDpScanning(false);
-      setDpDismissed(true);
-    }
-
-    if (!extracted?.brand) return;
-
-    // Extraction succeeded — set up chat with unit context
-    saveDataPlate(extracted);
-    setDataPlate(extracted);
-    const welcome = makeWelcome(extracted);
-    setMessages([welcome]);
-    saveMsgs([welcome]);
-
-    // Fetch manuals in background — inject chat message when done
-    try {
-      const brand = extracted.brand.trim();
-      const model = extracted.model?.trim() || '';
-      const res = await fetch(`/api/find-manual?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`);
-      const { manuals } = await res.json();
-      const docs = manuals?.length > 0 ? manuals.map(m => ({ ...m, source: "ManualsLib" })) : [];
-      const mfg = getMfgLink(brand);
-      if (mfg) docs.push(mfg);
-      if (docs.length > 0) {
-        ManualsStore.save({
-          id: Date.now().toString(),
-          created_date: new Date().toISOString(),
-          unit: extracted,
-          documents: docs,
-          unit_summary: `${brand}${model ? ' ' + model : ''}${extracted.unit_type ? ' — ' + extracted.unit_type : ''}`,
-        });
-        const lines = docs.map(d => `- [${d.title}](${d.url})`).join('\n');
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: `**Manuals loaded for ${brand}${model ? ' ' + model : ''}:**\n${lines}\n\nAvailable in the Manuals tab.`,
-        }]);
-      }
-    } catch { /* silent — manuals are a bonus, not critical */ }
-  };
-
   const sendMessage = async (text, imageUrls = []) => {
     setStarted(true);
     const userMsg = { role: "user", content: text, images: imageUrls };
@@ -567,7 +441,6 @@ export default function DiagnosePage() {
     localStorage.removeItem(TICKET_KEY);
     clearDataPlate();
     setDataPlate(null);
-    setDpDismissed(false);
     setSummaryReady(false);
     const welcome = makeWelcome();
     setMessages([welcome]);
@@ -639,69 +512,6 @@ export default function DiagnosePage() {
           }}>SESSION STARTED</span>
           <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
         </div>
-
-        {/* Data plate prompt — shown before first message if no unit locked */}
-        {!dpDismissed && (
-          <div style={{ padding: "0 16px 14px", flexShrink: 0 }}>
-            <input ref={dpCaptureRef} type="file" accept="image/*" capture="environment" onChange={handleDpPhoto} style={{ display: "none" }} />
-            <input ref={dpUploadRef}  type="file" accept="image/*" onChange={handleDpPhoto} style={{ display: "none" }} />
-            <div style={{
-              borderRadius: 10, padding: "14px 16px",
-              background: "rgba(79,195,247,0.06)",
-              border: "1px solid rgba(79,195,247,0.2)",
-            }}>
-              <p style={{
-                fontFamily: "'Barlow Condensed', sans-serif",
-                fontSize: 10, fontWeight: 700, color: "var(--blue)",
-                textTransform: "uppercase", letterSpacing: "0.14em", marginBottom: 3,
-              }}>STEP 1 — DATA PLATE</p>
-              <p style={{
-                fontFamily: "'Inter', sans-serif",
-                fontSize: 12, color: "var(--text-secondary)", marginBottom: 12, lineHeight: 1.5,
-              }}>
-                Photograph the unit nameplate. Senior Tech will pre-fill unit info and auto-load manuals.
-              </p>
-              {dpScanning ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Loader2 size={13} color="var(--blue)" style={{ animation: "spin 1s linear infinite" }} />
-                  <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, color: "var(--blue)", letterSpacing: "0.1em", textTransform: "uppercase" }}>READING DATA PLATE...</span>
-                </div>
-              ) : (
-                <>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                    <button onClick={() => dpCaptureRef.current?.click()} style={{
-                      flex: 1, height: 42, borderRadius: 8,
-                      background: "var(--blue)", color: "#0f0f0f", border: "none",
-                      fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 700,
-                      textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer",
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    }}>
-                      <Camera size={14} /> PHOTOGRAPH
-                    </button>
-                    <button onClick={() => dpUploadRef.current?.click()} style={{
-                      flex: 1, height: 42, borderRadius: 8,
-                      background: "var(--bg-elevated)", color: "var(--text-secondary)",
-                      border: "1px solid var(--border)",
-                      fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 700,
-                      textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer",
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    }}>
-                      <Upload size={14} /> UPLOAD
-                    </button>
-                  </div>
-                  <button onClick={() => setDpDismissed(true)} style={{
-                    background: "none", border: "none", cursor: "pointer",
-                    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11,
-                    color: "var(--text-muted)", textTransform: "uppercase",
-                    letterSpacing: "0.1em", textDecoration: "underline",
-                  }}>
-                    Skip — describe the issue
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Messages */}
         <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
