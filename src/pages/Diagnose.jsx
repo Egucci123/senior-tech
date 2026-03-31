@@ -351,6 +351,47 @@ export default function DiagnosePage() {
     return null;
   };
 
+  // After a photo message, extract unit info and auto-fetch manuals (background, silent)
+  const tryFetchManuals = async (sonnetResponse) => {
+    if (loadDataPlate()?.brand) return; // already have unit locked
+    try {
+      const extracted = await llm({
+        prompt: `Extract brand and model from this HVAC diagnostic response. Return JSON only.\n\n${sonnetResponse}`,
+        model: "claude_haiku_4_5",
+        max_tokens: 80,
+        json: { type: "object", properties: { brand: { type: "string" }, model: { type: "string" } } }
+      });
+      if (!extracted?.brand) return;
+
+      // Clean slash-separated brand names (e.g. "York/Johnson Controls" → "York")
+      const brand = extracted.brand.split(/[\/,]/)[0].trim();
+      const model = extracted.model?.split(/[\/,]/)[0].trim() || '';
+
+      saveDataPlate({ brand, model });
+      setDataPlate({ brand, model });
+
+      const res = await fetch(`/api/find-manual?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`);
+      const { manuals } = await res.json();
+      const docs = manuals?.length > 0 ? manuals.map(m => ({ ...m, source: "ManualsLib" })) : [];
+      const mfg = getMfgLink(brand);
+      if (mfg) docs.push(mfg);
+      if (docs.length > 0) {
+        ManualsStore.save({
+          id: Date.now().toString(),
+          created_date: new Date().toISOString(),
+          unit: { brand, model },
+          documents: docs,
+          unit_summary: `${brand}${model ? ' ' + model : ''}`,
+        });
+        const lines = docs.map(d => `- [${d.title}](${d.url})`).join('\n');
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `**Manuals loaded for ${brand}${model ? ' ' + model : ''}:**\n${lines}\n\nAvailable in the Manuals tab.`,
+        }]);
+      }
+    } catch { /* silent */ }
+  };
+
   const sendMessage = async (text, imageUrls = []) => {
     setStarted(true);
     const userMsg = { role: "user", content: text, images: imageUrls };
@@ -367,6 +408,8 @@ export default function DiagnosePage() {
         ...(imageUrls.length > 0 ? { images: imageUrls } : {}),
       });
       setMessages(prev => [...prev, { role: "assistant", content: response }]);
+      // If a photo was sent and we don't have unit info yet, extract + fetch manuals
+      if (imageUrls.length > 0) tryFetchManuals(response);
     } catch (err) {
       setMessages(prev => [...prev, { role: "assistant", content: `Error: ${err.message}` }]);
     }
