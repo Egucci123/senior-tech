@@ -1,43 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { Loader2, Wrench, X, Copy, Check } from "lucide-react";
-import ChatBubble from "../components/diagnose/ChatBubble";
-import ChatInput from "../components/diagnose/ChatInput";
-import { TicketStore } from "../components/ticketStore";
-import { ManualsStore } from "../components/manualsStore";
-
-const MSGS_KEY = 'diag_messages_v2';
-const STARTED_KEY = 'diag_started_v2';
-const TICKET_KEY = 'diag_current_ticket_id';
-
-function loadMsgs() {
-  try { return JSON.parse(localStorage.getItem(MSGS_KEY) || 'null'); } catch { return null; }
-}
-function saveMsgs(m) {
-  try {
-    // Strip base64 image data before storing — images are large and blow the 5MB localStorage limit.
-    // The text conversation is preserved; only the raw image bytes are dropped on save.
-    const lean = m.map(msg =>
-      msg.images?.length
-        ? { ...msg, images: msg.images.map(() => '[photo]') }
-        : msg
-    );
-    localStorage.setItem(MSGS_KEY, JSON.stringify(lean));
-  } catch (e) {
-    console.warn('saveMsgs: could not persist messages', e);
-  }
-}
-function loadStarted() { return localStorage.getItem(STARTED_KEY) === 'true'; }
-function loadProfile() { try { return JSON.parse(localStorage.getItem('senior_tech_profile') || '{}'); } catch { return {}; } }
-
-const DATA_PLATE_KEY = 'diag_data_plate';
-function loadDataPlate() { try { return JSON.parse(localStorage.getItem(DATA_PLATE_KEY) || 'null'); } catch { return null; } }
-function saveDataPlate(d) { try { localStorage.setItem(DATA_PLATE_KEY, JSON.stringify(d)); } catch {} }
-function clearDataPlate() { localStorage.removeItem(DATA_PLATE_KEY); }
-
-const SYSTEM_PROMPT = ;port React, { useState, useRef, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
-import { Loader2, Wrench, X, Copy, Check } from "lucide-react";
+import { Loader2, Wrench, X, Copy, Check, Camera, Upload } from "lucide-react";
 import ChatBubble from "../components/diagnose/ChatBubble";
 import ChatInput from "../components/diagnose/ChatInput";
 import { TicketStore } from "../components/ticketStore";
@@ -94,17 +57,6 @@ GAUGE READING:
 3. Confirm back: "R-[x] | Suction: [x]psig/[x]°F | Discharge: [x]psig/[x]°F | SH: [x]°F | SC: [x]°F — confirm and I'll dig in"
 4. After confirmation only — analyze all five together. Never in isolation
 
-NON-OBVIOUS DIAGNOSTICS — things commonly missed:
-- TXV hunting in heat pump HEATING mode: outdoor coil is the evaporator — the TXV is on the OUTDOOR unit, not indoor. Most techs chase the indoor TXV and miss this. Check outdoor TXV bulb clamped and insulated first. Below 35°F without low ambient kit = starved outdoor TXV
-- High head + high SC + NORMAL suction + clean condenser = NON-CONDENSABLES, not overcharge. Normal suction rules out condenser restriction. Full fix only: recover all refrigerant → evacuate to 500 microns hold 30+ min → recharge to nameplate weight. Partial recovery won't fix it
-- Variable capacity scroll (Copeland/Trane/Carrier): ohmmeter only checks coil resistance — not the control signal. "Solenoid tests good but won't unload" → measure DC voltage at solenoid terminals WHILE commanding low stage. No voltage = board issue. Voltage present + won't unload = replace compressor
-- Carrier Infinity intermittent no-call or short cycle with no active faults: ALWAYS pull fault HISTORY — comm drops show in history only. Swap thermostat before condemning control board
-- 3-phase compressor: NO run capacitor — never suggest one. Phase rotation critical on scrolls
-- RTU gas heat: NO secondary drain pan, NO float switch on gas side — never suggest these on a packaged unit
-- Blown control fuse: pull thermostat wires one at a time (Y, G, W — keep R+C). Replace fuse after each — when it holds, that wire is the fault. Find short before replacing fuse or transformer
-- ECM motors: self-starting, no run cap. Failed module = zero rotation with no smell. Diagnose: line voltage → 24V control signal → board fault codes → winding resistance
-- Contactor chattering with confirmed good idle voltage: inrush voltage sag — watch transformer secondary AT moment of pull-in, not steady state. Below 21V = replace transformer
-
 BRAND FAULT CODES:
 - Carrier Infinity: pull HISTORY always — comm drops don't store as active faults. E44=blower comm. Swap thermostat before condemning board
 - Trane: 2=flame fail; 3=pressure switch; 4=overheat; 5=flame with no call (leaky gas valve); F0=low refrigerant
@@ -117,14 +69,37 @@ BRAND FAULT CODES:
 - Fujitsu: dF normal. F1=outdoor sensor; F4=low temp; F5=high pressure. Charge by weight
 - Bosch: B-terminal heat pump. E13=low voltage — measure under compressor load not idle
 - ICP/Heil/Tempstar: same unit, parts interchangeable. Control fuse 3A
-- Heat pump terminal: O=energized cooling (Carrier/Trane/Lennox/Goodman/Daikin/Mitsubishi/Fujitsu). B=energized heating (Rheem/Ruud/Bosch/York)`;
+- Heat pump terminal: O=energized cooling (Carrier/Trane/Lennox/Goodman/Daikin/Mitsubishi/Fujitsu). B=energized heating (Rheem/Ruud/Bosch/York)
+
+COMBUSTION ANALYSIS (numbers Sonnet won't guess right):
+- CO as-measured: <50 ppm ideal; >100 ppm investigate; >400 ppm air-free (COAF) = immediate shutdown + red tag
+- COAF = CO corrected for dilution air — always use COAF for shutdown decisions, not raw reading
+- CO₂ natural gas target: 8–10%. Above 10% = dangerously tight on excess air
+- O₂ target: 6–9%. O₂ and CO₂ are inverse — if they don't track opposite, suspect analyzer drift or calibration error
+- Excess air target: 35–75%
+- Stack temp: 80% furnace = 325–500°F; 90%+ condensing = 130–140°F
+- CO spikes when blower starts = cracked heat exchanger — treat as emergency, shut down, do not restart
+
+FLAME SENSOR:
+- Reads in DC microamps. Good: 2–6 µA. Below 1 µA = clean or replace. Multimeter must be in DC µA mode
+
+REFRIGERANT TRANSITION (regulatory facts — current as of 2026):
+- R-410A: no new equipment since Jan 1 2025; reclaimed/recovered only as of Jan 1 2026; prices $25–45/lb and rising
+- R-454B (Opteon XL41 / Puron Advance): new U.S. standard — adopted by Carrier, Trane, Lennox, York. A2L, GWP 466, ignites at 925°F
+- R-32: A2L alternative, dominant in EU/Asia, GWP 675
+- A2L systems require updated certification — do not service without it
+- No drop-in swap R-410A → R-454B: different lubricant, different operating pressures, different manifold gauges required. Tell customer this if asked about switching`;
 
 
 
-function makeWelcome() {
+function makeWelcome(dp) {
+  if (dp?.brand) {
+    const unit = [dp.brand, dp.unit_type, dp.model ? `(${dp.model})` : null].filter(Boolean).join(' ');
+    return { role: "assistant", content: `**Senior Tech here.** Got the ${unit}. What's the complaint?` };
+  }
   return {
     role: "assistant",
-    content: "**Senior Tech here.** Ready to diagnose.\n\nDescribe the issue or send a photo of the data plate to get started. If you send a data plate photo, I'll automatically pull up the installation manual, service manual, and wiring diagram — they'll be saved in your **Manuals** tab for quick access on the job.",
+    content: "**Senior Tech here.** Ready to diagnose.\n\nDescribe the issue, send a fault code, or photograph any gauge readings, wiring, or components.",
   };
 }
 
@@ -277,15 +252,19 @@ export default function DiagnosePage() {
   const needsOnboarding = !profile?.name?.trim();
 
   const [messages, setMessages] = useState(() => {
-    return loadMsgs() || [makeWelcome()];
+    return loadMsgs() || [makeWelcome(loadDataPlate())];
   });
   const [isLoading, setIsLoading] = useState(false);
   const [started, setStarted]     = useState(loadStarted);
   const [summaryModal, setSummaryModal] = useState({ open: false, text: "", loading: false, customRequest: "" });
   const [summaryReady, setSummaryReady] = useState(false);
   const [copied, setCopied] = useState(false);
-  const ticketIdRef = useRef(localStorage.getItem(TICKET_KEY) || null);
-  const chatEndRef  = useRef(null);
+  const [dpScanning, setDpScanning]   = useState(false);
+  const [dpDismissed, setDpDismissed] = useState(() => !!loadDataPlate());
+  const ticketIdRef  = useRef(localStorage.getItem(TICKET_KEY) || null);
+  const chatEndRef   = useRef(null);
+  const dpCaptureRef = useRef(null);
+  const dpUploadRef  = useRef(null);
 
   const handleOnboardingComplete = (newProfile) => {
     setProfile(newProfile);
@@ -365,72 +344,78 @@ export default function DiagnosePage() {
     };
   };
 
-  // Background: detect data plate in AI response (or user text) and auto-fetch manuals
-  const tryAutoFetchManuals = async (aiResponse, userText = "") => {
+  // Returns a manufacturer resource link for a given brand, or null
+  const getMfgLink = (brand) => {
+    const bl = brand.toLowerCase();
+    if (bl.includes('carrier'))                             return { type: "Manufacturer", title: "Carrier Technical Resources",    url: "https://www.carrier.com/residential/en/us/support/",                  source: "Carrier" };
+    if (bl.includes('trane'))                              return { type: "Manufacturer", title: "Trane Technical Resources",      url: "https://www.trane.com/residential/en/resources/",                     source: "Trane" };
+    if (bl.includes('lennox'))                             return { type: "Manufacturer", title: "Lennox Technical Resources",     url: "https://www.lennox.com/dealers/technical-support",                    source: "Lennox" };
+    if (bl.includes('rheem') || bl.includes('ruud'))       return { type: "Manufacturer", title: "Rheem Technical Literature",    url: "https://www.rheem.com/technical-literature/",                         source: "Rheem" };
+    if (bl.includes('goodman') || bl.includes('amana'))    return { type: "Manufacturer", title: "Goodman Technical Resources",   url: "https://www.goodmanmfg.com/resources/customer-resources",             source: "Goodman" };
+    if (bl.includes('york'))                               return { type: "Manufacturer", title: "York Technical Resources",      url: "https://www.johnsoncontrols.com/hvac-and-refrigeration",              source: "York" };
+    if (bl.includes('daikin'))                             return { type: "Manufacturer", title: "Daikin Technical Resources",    url: "https://daikincomfort.com/professional-support/technical-support",    source: "Daikin" };
+    if (bl.includes('mitsubishi'))                         return { type: "Manufacturer", title: "Mitsubishi Technical Resources", url: "https://www.mitsubishicomfort.com/contractors/tech-resources",       source: "Mitsubishi" };
+    if (bl.includes('fujitsu'))                            return { type: "Manufacturer", title: "Fujitsu Technical Resources",   url: "https://www.fujitsugeneral.com/us/resources/",                        source: "Fujitsu" };
+    return null;
+  };
+
+  // Called when tech photographs or uploads data plate before starting the chat
+  const handleDpPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setDpScanning(true);
     try {
-      const combined = `${userText}\n\n${aiResponse}`.slice(0, 1800);
-      const extraction = await base44.integrations.Core.InvokeLLM({
-        prompt: `Extract HVAC equipment identification from the following text. Look for any brand name (Carrier, Trane, Lennox, Rheem, Ruud, Goodman, Amana, York, Daikin, Mitsubishi, Fujitsu, Bryant, Heil, ICP, Tempstar, etc.), model number, unit type (condenser, air handler, heat pump, furnace, mini-split, package unit), and refrigerant type. Return the fields you find. If absolutely no equipment brand is mentioned, return {"brand": null}.\n\nText:\n${combined}`,
-        model: "claude_haiku_4_5",
-        max_tokens: 200,
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const extracted = await base44.integrations.Core.InvokeLLM({
+        prompt: "Extract from this HVAC nameplate and return only raw JSON: brand, model, serial, unit_type, refrigerant_type, tonnage, voltage. Use null for any field not visible.",
+        file_urls: [file_url],
+        model: "claude_sonnet_4_6",
+        max_tokens: 150,
         response_json_schema: {
           type: "object",
           properties: {
-            brand:           { type: "string" },
-            model:           { type: "string" },
-            unit_type:       { type: "string" },
-            refrigerant_type:{ type: "string" },
+            brand:            { type: "string" },
+            model:            { type: "string" },
+            serial:           { type: "string" },
+            unit_type:        { type: "string" },
+            refrigerant_type: { type: "string" },
+            tonnage:          { type: "string" },
+            voltage:          { type: "string" },
           }
         }
       });
 
-      if (!extraction?.brand) return;
+      if (extracted?.brand) {
+        saveDataPlate(extracted);
+        setDataPlate(extracted);
+        const welcome = makeWelcome(extracted);
+        setMessages([welcome]);
+        saveMsgs([welcome]);
 
-      // Save data plate context so AI never forgets this unit info
-      saveDataPlate(extraction);
-      setDataPlate(extraction);
-
-      const brand = extraction.brand.trim();
-      const model = extraction.model?.trim() || '';
-      const base = `${brand}${model ? ' ' + model : ''}`.trim();
-
-      // Ask the server to find real manual pages using AI web search
-      let documents = [];
-      try {
-        const manualRes = await fetch(
-          `/api/find-manual?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`
-        );
-        const { manuals, fallback } = await manualRes.json();
-
-        if (manuals?.length > 0) {
-          documents = manuals.map(m => ({ ...m, source: "ManualsLib" }));
-        } else if (fallback) {
-          documents.push({ type: "All Manuals", title: `${brand} — Browse Manuals`, url: fallback, source: "ManualsLib" });
-        }
-      } catch { /* silent */ }
-
-      // Add direct manufacturer resource link
-      const bl = brand.toLowerCase();
-      if (bl.includes('carrier'))                        documents.push({ type: "Manufacturer", title: "Carrier Technical Resources", url: "https://www.carrier.com/residential/en/us/support/",                     source: "Carrier" });
-      else if (bl.includes('trane'))                    documents.push({ type: "Manufacturer", title: "Trane Technical Resources",   url: "https://www.trane.com/residential/en/resources/",                       source: "Trane" });
-      else if (bl.includes('lennox'))                   documents.push({ type: "Manufacturer", title: "Lennox Technical Resources",  url: "https://www.lennox.com/dealers/technical-support",                     source: "Lennox" });
-      else if (bl.includes('rheem') || bl.includes('ruud'))   documents.push({ type: "Manufacturer", title: "Rheem Technical Literature",  url: "https://www.rheem.com/technical-literature/",                          source: "Rheem" });
-      else if (bl.includes('goodman') || bl.includes('amana')) documents.push({ type: "Manufacturer", title: "Goodman Technical Resources", url: "https://www.goodmanmfg.com/resources/customer-resources",              source: "Goodman" });
-      else if (bl.includes('york'))                     documents.push({ type: "Manufacturer", title: "York Technical Resources",   url: "https://www.johnsoncontrols.com/hvac-and-refrigeration",               source: "York" });
-      else if (bl.includes('daikin'))                   documents.push({ type: "Manufacturer", title: "Daikin Technical Resources",  url: "https://daikincomfort.com/professional-support/technical-support",     source: "Daikin" });
-      else if (bl.includes('mitsubishi'))               documents.push({ type: "Manufacturer", title: "Mitsubishi Technical Resources", url: "https://www.mitsubishicomfort.com/contractors/tech-resources",        source: "Mitsubishi" });
-      else if (bl.includes('fujitsu'))                  documents.push({ type: "Manufacturer", title: "Fujitsu Technical Resources",  url: "https://www.fujitsugeneral.com/us/resources/",                          source: "Fujitsu" });
-
-      ManualsStore.save({
-        id: Date.now().toString(),
-        created_date: new Date().toISOString(),
-        unit: extraction,
-        documents,
-        unit_summary: `${brand}${model ? ' ' + model : ''}${extraction.unit_type ? ' — ' + extraction.unit_type : ''}`,
-      });
-    } catch {
-      // Silent fail — never disrupt the main chat
-    }
+        // Fetch manuals in background — silent fail
+        try {
+          const brand = extracted.brand.trim();
+          const model = extracted.model?.trim() || '';
+          const res = await fetch(`/api/find-manual?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`);
+          const { manuals } = await res.json();
+          const docs = (manuals?.length > 0 ? manuals.map(m => ({ ...m, source: "ManualsLib" })) : []);
+          const mfg = getMfgLink(brand);
+          if (mfg) docs.push(mfg);
+          if (docs.length > 0) {
+            ManualsStore.save({
+              id: Date.now().toString(),
+              created_date: new Date().toISOString(),
+              unit: extracted,
+              documents: docs,
+              unit_summary: `${brand}${model ? ' ' + model : ''}${extracted.unit_type ? ' — ' + extracted.unit_type : ''}`,
+            });
+          }
+        } catch { /* silent */ }
+      }
+    } catch { /* fail silently — let tech proceed */ }
+    setDpScanning(false);
+    setDpDismissed(true);
   };
 
   const sendMessage = async (text, imageUrls = []) => {
@@ -448,10 +433,7 @@ export default function DiagnosePage() {
         max_tokens: 800,
         ...(imageUrls.length > 0 ? { file_urls: imageUrls } : {}),
       });
-      window.__trackCredit?.();
       setMessages(prev => [...prev, { role: "assistant", content: response }]);
-      // Fire extraction on every message until we have a saved data plate
-      if (imageUrls.length > 0 || !loadDataPlate()?.brand) tryAutoFetchManuals(response, text);
     } catch (err) {
       setMessages(prev => [...prev, { role: "assistant", content: "Connection error — check your network and try again." }]);
     }
@@ -526,6 +508,7 @@ export default function DiagnosePage() {
     localStorage.removeItem(TICKET_KEY);
     clearDataPlate();
     setDataPlate(null);
+    setDpDismissed(false);
     setSummaryReady(false);
     const welcome = makeWelcome();
     setMessages([welcome]);
@@ -597,6 +580,69 @@ export default function DiagnosePage() {
           }}>SESSION STARTED</span>
           <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
         </div>
+
+        {/* Data plate prompt — shown before first message if no unit locked */}
+        {!dpDismissed && (
+          <div style={{ padding: "0 16px 14px", flexShrink: 0 }}>
+            <input ref={dpCaptureRef} type="file" accept="image/*" capture="environment" onChange={handleDpPhoto} style={{ display: "none" }} />
+            <input ref={dpUploadRef}  type="file" accept="image/*" onChange={handleDpPhoto} style={{ display: "none" }} />
+            <div style={{
+              borderRadius: 10, padding: "14px 16px",
+              background: "rgba(79,195,247,0.06)",
+              border: "1px solid rgba(79,195,247,0.2)",
+            }}>
+              <p style={{
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontSize: 10, fontWeight: 700, color: "var(--blue)",
+                textTransform: "uppercase", letterSpacing: "0.14em", marginBottom: 3,
+              }}>STEP 1 — DATA PLATE</p>
+              <p style={{
+                fontFamily: "'Inter', sans-serif",
+                fontSize: 12, color: "var(--text-secondary)", marginBottom: 12, lineHeight: 1.5,
+              }}>
+                Photograph the unit nameplate. Senior Tech will pre-fill unit info and auto-load manuals.
+              </p>
+              {dpScanning ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Loader2 size={13} color="var(--blue)" style={{ animation: "spin 1s linear infinite" }} />
+                  <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, color: "var(--blue)", letterSpacing: "0.1em", textTransform: "uppercase" }}>READING DATA PLATE...</span>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                    <button onClick={() => dpCaptureRef.current?.click()} style={{
+                      flex: 1, height: 42, borderRadius: 8,
+                      background: "var(--blue)", color: "#0f0f0f", border: "none",
+                      fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 700,
+                      textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    }}>
+                      <Camera size={14} /> PHOTOGRAPH
+                    </button>
+                    <button onClick={() => dpUploadRef.current?.click()} style={{
+                      flex: 1, height: 42, borderRadius: 8,
+                      background: "var(--bg-elevated)", color: "var(--text-secondary)",
+                      border: "1px solid var(--border)",
+                      fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 700,
+                      textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    }}>
+                      <Upload size={14} /> UPLOAD
+                    </button>
+                  </div>
+                  <button onClick={() => setDpDismissed(true)} style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11,
+                    color: "var(--text-muted)", textTransform: "uppercase",
+                    letterSpacing: "0.1em", textDecoration: "underline",
+                  }}>
+                    Skip — describe the issue
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Messages */}
         <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 14 }}>

@@ -1,48 +1,35 @@
 import React, { useState, useRef, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { Camera, Upload, Pencil, Loader2, FileText, AlertTriangle, Shield, Leaf, ExternalLink, X, Search } from "lucide-react";
+import { Camera, Upload, Loader2, FileText, Shield, Leaf, ExternalLink, X } from "lucide-react";
 import DocViewer from "../components/scan/DocViewer";
 import PageHeader from "../components/shared/PageHeader";
 import ScanViewfinder from "../components/scan/ScanViewfinder";
 import UnitCard from "../components/scan/UnitCard";
-import { decodeSerialYear } from "../components/scan/serialDecoder";
 import { AppState } from "../components/appState";
 
 
-const INPUT_STYLE = {
-  background: "#161c1c", color: "#cce0e0",
-  border: "1px solid #1e2828", borderRadius: 10,
-  padding: "12px 14px", fontFamily: "'IBM Plex Mono', monospace",
-  fontSize: 13, outline: "none", width: "100%",
-};
 
 export default function ScanUnitPage() {
-  const [unitData, setUnitData]       = useState(() => AppState.get('scan_unitData'));
-  const [knownIssues, setKnownIssues] = useState(() => AppState.get('scan_knownIssues'));
-  const [documents, setDocuments]     = useState(() => AppState.get('scan_documents'));
-  const [isScanning, setIsScanning]       = useState(false);
-  const [isLoadingIssues, setIsLoadingIssues] = useState(false);
-  const [isLoadingDocs, setIsLoadingDocs]     = useState(false);
-  const [showManual, setShowManual] = useState(false);
+  const [unitData, setUnitData]   = useState(() => AppState.get('scan_unitData'));
+  const [documents, setDocuments] = useState(() => AppState.get('scan_documents'));
+  const [isScanning, setIsScanning]   = useState(false);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
   const [viewingDoc, setViewingDoc] = useState(null);
-  const [manualForm, setManualForm] = useState({ brand: "", model_number: "", serial_number: "", unit_type: "", age: 10 });
   const fileInputRef   = useRef(null);
   const uploadInputRef = useRef(null);
 
   // Persist to AppState on every change
-  useEffect(() => { AppState.set('scan_unitData',    unitData);    }, [unitData]);
-  useEffect(() => { AppState.set('scan_knownIssues', knownIssues); }, [knownIssues]);
-  useEffect(() => { AppState.set('scan_documents',   documents);   }, [documents]);
+  useEffect(() => { AppState.set('scan_unitData',  unitData);  }, [unitData]);
+  useEffect(() => { AppState.set('scan_documents', documents); }, [documents]);
 
   const clearUnit = () => {
     setUnitData(null);
-    setKnownIssues(null);
     setDocuments(null);
   };
 
   const processImage = async (file) => {
     setIsScanning(true);
-    setUnitData(null); setKnownIssues(null); setDocuments(null);
+    setUnitData(null); setDocuments(null);
 
     const { file_url } = await base44.integrations.Core.UploadFile({ file });
 
@@ -65,13 +52,8 @@ export default function ScanUnitPage() {
         }
       }
     });
-    window.__trackCredit?.();
 
     const data = { ...extracted, nameplate_image_url: file_url };
-    if (data.brand && data.serial_number && !data.manufacture_date) {
-      const year = decodeSerialYear(data.brand, data.serial_number);
-      if (year) data.manufacture_date = String(year);
-    }
     if (data.manufacture_date) {
       data.unit_age = new Date().getFullYear() - parseInt(data.manufacture_date);
     }
@@ -80,67 +62,18 @@ export default function ScanUnitPage() {
     setIsScanning(false);
   };
 
-  const loadKnownIssues = async () => {
-    if (!unitData) return;
-    setIsLoadingIssues(true);
-    const age = unitData.unit_age || unitData.age || "unknown";
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt: `For a ${unitData.brand || "unknown"} ${unitData.unit_type || "HVAC unit"} that is ${age} years old, list the 4 most common failure points. Plain field language.`,
-      model: "claude_sonnet_4_6",
-      max_tokens: 250,
-    });
-    window.__trackCredit?.();
-    setKnownIssues(result);
-    setIsLoadingIssues(false);
-  };
-
   const loadDocuments = async () => {
-    if (!unitData?.model_number) return;
+    if (!unitData?.brand) return;
     setIsLoadingDocs(true);
-    const model = unitData.model_number;
-    const brand = unitData.brand;
-
-    const brandUrls = {
-      carrier: "carrier.com/residential/en/us/support",
-      bryant: "bryant.com/en/us/support",
-      trane: "trane.com/residential/en/resources",
-      "american standard": "americanstandardair.com/support",
-      lennox: "lennox.com/resources",
-      goodman: "goodmanmfg.com/resources",
-      amana: "amana-hac.com/resources",
-      rheem: "rheem.com/support",
-      ruud: "ruud.com/support",
-      york: "york.com/support",
-      daikin: "daikincomfort.com/support",
-      mitsubishi: "mitsubishielectric.us/hvac/support",
-    };
-    const brandKey = (brand || "").toLowerCase();
-    const mfgUrl = brandUrls[brandKey] || null;
-
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt: `Find technical documents for model "${model}" (brand: "${brand || "unknown"}"). Search ManualsLib, manufacturer site${mfgUrl ? ` (${mfgUrl})` : ""}, hvac-talk.com, encompassparts.com. Return document_type, url, source. If none found, return search links prefixed "Search — " for: ManualsLib (https://www.manualslib.com/search/?q=${encodeURIComponent(model)}), Manufacturer, HVAC-Talk (https://hvac-talk.com/vbb/search.php?query=${encodeURIComponent(model)}), EncompassParts (https://www.encompassparts.com/search?term=${encodeURIComponent(model)}).`,
-      add_context_from_internet: true,
-      model: "gemini_3_flash",
-      max_tokens: 150,
-      response_json_schema: {
-        type: "object",
-        properties: {
-          documents: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                document_type: { type: "string" },
-                url: { type: "string" },
-                source: { type: "string" },
-              }
-            }
-          }
-        }
-      }
-    });
-    window.__trackCredit?.();
-    setDocuments(result?.documents || null);
+    try {
+      const res = await fetch(
+        `/api/find-manual?brand=${encodeURIComponent(unitData.brand)}&model=${encodeURIComponent(unitData.model_number || '')}`
+      );
+      const { manuals } = await res.json();
+      setDocuments(manuals?.length > 0 ? manuals : []);
+    } catch {
+      setDocuments([]);
+    }
     setIsLoadingDocs(false);
   };
 
@@ -150,52 +83,6 @@ export default function ScanUnitPage() {
     const file = e.target.files?.[0];
     if (file) processImage(file);
     e.target.value = "";
-  };
-
-  const handleManualSubmit = async () => {
-    if (!manualForm.model_number.trim()) return;
-    setIsScanning(true);
-    setUnitData(null); setKnownIssues(null); setDocuments(null);
-    setShowManual(false);
-
-    const extracted = await base44.integrations.Core.InvokeLLM({
-      prompt: `Given model number "${manualForm.model_number}", look up and return: brand, unit_type, refrigerant_type, tonnage, btuh, voltage, seer, manufacture_date (year only), phase, amps_rla, amps_mca, amps_mop, charge_oz. Only return what's confidently determinable.`,
-      add_context_from_internet: true,
-      model: "gemini_3_flash",
-      max_tokens: 350,
-      response_json_schema: {
-        type: "object",
-        properties: {
-          brand: { type: "string" },
-          unit_type: { type: "string" },
-          refrigerant_type: { type: "string" },
-          tonnage: { type: "string" },
-          btuh: { type: "string" },
-          voltage: { type: "string" },
-          seer: { type: "string" },
-          manufacture_date: { type: "string" },
-          phase: { type: "string" },
-          amps_rla: { type: "string" },
-          amps_mca: { type: "string" },
-          amps_mop: { type: "string" },
-          charge_oz: { type: "string" },
-        }
-      }
-    });
-    window.__trackCredit?.();
-
-    const data = {
-      ...extracted,
-      model_number: manualForm.model_number,
-      serial_number: manualForm.serial_number || null,
-    };
-
-    if (data.manufacture_date) {
-      data.unit_age = new Date().getFullYear() - parseInt(data.manufacture_date);
-    }
-
-    setUnitData(data);
-    setIsScanning(false);
   };
 
 
@@ -223,50 +110,16 @@ export default function ScanUnitPage() {
             {isScanning ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
             {isScanning ? "READING NAMEPLATE..." : "PHOTOGRAPH NAMEPLATE"}
           </button>
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={handleUpload}
-              className="py-3 rounded-xl font-condensed text-sm font-semibold flex items-center justify-center gap-2"
-              style={{ background: "#111515", color: "#cce0e0", border: "1px solid #1e2828" }}>
-              <Upload className="w-4 h-4" /> UPLOAD IMAGE
-            </button>
-            <button onClick={() => setShowManual(!showManual)}
-              className="py-3 rounded-xl font-condensed text-sm font-semibold flex items-center justify-center gap-2"
-              style={{ background: "#111515", color: "#cce0e0", border: "1px solid #1e2828" }}>
-              <Pencil className="w-4 h-4" /> MANUAL ENTRY
-            </button>
-          </div>
+          <button onClick={handleUpload}
+            className="py-3 rounded-xl font-condensed text-sm font-semibold flex items-center justify-center gap-2"
+            style={{ background: "#111515", color: "#cce0e0", border: "1px solid #1e2828" }}>
+            <Upload className="w-4 h-4" /> UPLOAD IMAGE
+          </button>
         </div>
 
         <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" />
         <input ref={uploadInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
 
-        {/* Manual entry form */}
-        {showManual && (
-          <div className="rounded-xl p-4 space-y-3" style={{ background: "#111515", border: "1px solid #1e2828" }}>
-            <p className="font-mono" style={{ fontSize: 10, color: "#7a9898", letterSpacing: 1.5 }}>
-              ENTER MODEL NUMBER — ALL UNIT INFO WILL BE LOOKED UP AUTOMATICALLY
-            </p>
-            <input
-              placeholder="Model Number (e.g. 4TTR3036L1000A)"
-              value={manualForm.model_number}
-              onChange={(e) => setManualForm(p => ({ ...p, model_number: e.target.value }))}
-              style={INPUT_STYLE}
-            />
-            <input
-              placeholder="Serial Number (optional)"
-              value={manualForm.serial_number}
-              onChange={(e) => setManualForm(p => ({ ...p, serial_number: e.target.value }))}
-              style={INPUT_STYLE}
-            />
-            <button
-              onClick={handleManualSubmit}
-              disabled={!manualForm.model_number.trim()}
-              className="btn-accent w-full py-3 rounded-xl flex items-center justify-center gap-2"
-              style={{ opacity: !manualForm.model_number.trim() ? 0.45 : 1 }}>
-              <Search size={15} /> LOOK UP UNIT
-            </button>
-          </div>
-        )}
 
         {/* Unit card with CLEAR button */}
         {unitData && (
@@ -318,31 +171,6 @@ export default function ScanUnitPage() {
           </div>
         )}
 
-        {/* Known issues */}
-        {unitData && (
-          <div className="rounded-xl px-4 py-3" style={{ background: "#ffc60008", border: "1px solid #ffc60033" }}>
-            <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle className="w-4 h-4" style={{ color: "#ffc600" }} />
-              <p style={{ fontSize: 20, color: "#ffc600", fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 2 }}>KNOWN ISSUES</p>
-            </div>
-            {isLoadingIssues ? (
-              <div className="flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#ffc600" }} />
-                <span className="font-mono" style={{ fontSize: 10, color: "#7a9898" }}>Looking up common failures...</span>
-              </div>
-            ) : knownIssues ? (
-              <p className="font-body text-xs leading-relaxed whitespace-pre-line" style={{ color: "#7a9898" }}>
-                {knownIssues}
-              </p>
-            ) : (
-              <button onClick={loadKnownIssues}
-                className="w-full py-2 rounded-lg font-mono text-xs"
-                style={{ background: "#111515", color: "#ffc600", border: "1px solid #ffc60033" }}>
-                LOAD KNOWN ISSUES
-              </button>
-            )}
-          </div>
-        )}
 
         {/* Documents */}
         {unitData && (

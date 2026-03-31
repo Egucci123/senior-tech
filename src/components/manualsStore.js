@@ -2,7 +2,7 @@
 // Auto-purges oldest when the 10-entry limit is exceeded.
 
 const KEY = 'saved_manuals';
-const MAX = 10;
+const MAX = 5;
 
 export const ManualsStore = {
   getAll: () => {

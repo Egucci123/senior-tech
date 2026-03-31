@@ -2,7 +2,7 @@
 // Oldest is auto-deleted when the 10-ticket limit is exceeded.
 
 const KEY = 'diag_tickets';
-const MAX = 10;
+const MAX = 5;
 
 export const TicketStore = {
   getAll: () => {
