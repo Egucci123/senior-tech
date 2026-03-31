@@ -248,7 +248,17 @@ export default function DiagnosePage() {
   const needsOnboarding = false; // handled by /onboarding route in App.jsx
 
   const [messages, setMessages] = useState(() => {
-    return loadMsgs() || [makeWelcome()];
+    const saved = loadMsgs();
+    // If a request was in flight when we last left, the response may not have saved —
+    // append a notice so the tech knows to resend
+    if (saved && localStorage.getItem('diag_pending')) {
+      localStorage.removeItem('diag_pending');
+      const last = saved[saved.length - 1];
+      if (last?.role === 'user') {
+        return [...saved, { role: 'assistant', content: 'Response was interrupted — switched tabs mid-request. Please resend your last message.' }];
+      }
+    }
+    return saved || [makeWelcome()];
   });
   const [isLoading, setIsLoading] = useState(false);
   const [started, setStarted]     = useState(loadStarted);
@@ -268,6 +278,19 @@ export default function DiagnosePage() {
   // Persist messages to localStorage on every change
   useEffect(() => { saveMsgs(messages); }, [messages]);
   useEffect(() => { localStorage.setItem(STARTED_KEY, started); }, [started]);
+
+  // Re-sync from localStorage when tab becomes visible again (catches responses that
+  // arrived while the Diagnose component was unmounted / another route was active)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        const saved = loadMsgs();
+        if (saved) setMessages(saved);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   // Auto-upsert ticket in TicketStore whenever messages change
   useEffect(() => {
@@ -359,7 +382,7 @@ export default function DiagnosePage() {
       const extracted = await llm({
         prompt: "Extract from this HVAC nameplate. Return JSON only: brand, model, serial, unit_type, refrigerant_type, tonnage, voltage. Use null for any field not visible.",
         images: imageUrls,
-        model: "claude_haiku_4_5",
+        model: "claude_sonnet_4_6",
         max_tokens: 150,
         json: {
           type: "object",
@@ -418,6 +441,8 @@ export default function DiagnosePage() {
     const userMsg = { role: "user", content: text, images: imageUrls };
     const nextMsgs = [...messages, userMsg];
     setMessages(nextMsgs);
+    saveMsgs(nextMsgs); // persist immediately so remounts see the user message
+    localStorage.setItem('diag_pending', '1');
     setIsLoading(true);
     try {
       const { system, userPrompt } = buildMessages(text, messages);
@@ -443,6 +468,7 @@ export default function DiagnosePage() {
         return updated;
       });
     }
+    localStorage.removeItem('diag_pending');
     setIsLoading(false);
   };
 
