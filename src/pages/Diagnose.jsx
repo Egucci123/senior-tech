@@ -315,12 +315,12 @@ export default function DiagnosePage() {
     }
 
     const src = msgHistory || messages;
-    // Always include first 2 messages (data plate / opening context) + last 4 recent messages
-    const first2 = src.slice(0, 2);
+    // Always include first 3 messages (welcome + photo + Sonnet's data plate read) + last 4 recent
+    const first3 = src.slice(0, 3);
     const last4  = src.slice(-4);
-    const combined = src.length <= 6
+    const combined = src.length <= 7
       ? src
-      : [...first2, ...last4.filter(m => !first2.includes(m))];
+      : [...first3, ...last4.filter(m => !first3.includes(m))];
     const history = [...combined, { role: "user", content: newMsg }]
       .map(m => {
         const photoNote = m.images?.length ? ' [sent photo]' : '';
@@ -356,10 +356,21 @@ export default function DiagnosePage() {
     if (loadDataPlate()?.brand) return; // already have unit locked
     try {
       const extracted = await llm({
-        prompt: `Extract brand and model from this HVAC diagnostic response. Return JSON only.\n\n${sonnetResponse}`,
+        prompt: `Extract unit info from this HVAC diagnostic response. Return JSON only.\n\n${sonnetResponse}`,
         model: "claude_haiku_4_5",
-        max_tokens: 80,
-        json: { type: "object", properties: { brand: { type: "string" }, model: { type: "string" } } }
+        max_tokens: 150,
+        json: {
+          type: "object",
+          properties: {
+            brand:            { type: "string" },
+            model:            { type: "string" },
+            serial:           { type: "string" },
+            unit_type:        { type: "string" },
+            refrigerant_type: { type: "string" },
+            tonnage:          { type: "string" },
+            voltage:          { type: "string" },
+          }
+        }
       });
       if (!extracted?.brand) return;
 
@@ -367,8 +378,16 @@ export default function DiagnosePage() {
       const brand = extracted.brand.split(/[\/,]/)[0].trim();
       const model = extracted.model?.split(/[\/,]/)[0].trim() || '';
 
-      saveDataPlate({ brand, model });
-      setDataPlate({ brand, model });
+      const plate = {
+        brand, model,
+        serial:           extracted.serial           || null,
+        unit_type:        extracted.unit_type        || null,
+        refrigerant_type: extracted.refrigerant_type || null,
+        tonnage:          extracted.tonnage          || null,
+        voltage:          extracted.voltage          || null,
+      };
+      saveDataPlate(plate);
+      setDataPlate(plate);
 
       const res = await fetch(`/api/find-manual?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`);
       const { manuals } = await res.json();
