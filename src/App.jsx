@@ -6,15 +6,21 @@ import Manuals from './pages/Manuals';
 import HistoryPage from './pages/History';
 import SettingsPage from './pages/Settings';
 import OnboardingPage from './pages/Onboarding';
+import { useNavigate } from 'react-router-dom';
 
-const onboardingDone = () => !!localStorage.getItem("onboarding_done");
+const onboardingDone = () => !!(localStorage.getItem("onboarding_done") || localStorage.getItem("st_onboarding_complete"));
+
+function OnboardingWrapper() {
+  const navigate = useNavigate();
+  return <OnboardingPage onComplete={() => navigate("/diagnose", { replace: true })} />;
+}
 
 export default function App() {
   return (
     <Router>
       <Routes>
         <Route path="/" element={<Navigate to={onboardingDone() ? "/diagnose" : "/onboarding"} replace />} />
-        <Route path="/onboarding" element={<OnboardingPage />} />
+        <Route path="/onboarding" element={<OnboardingWrapper />} />
         <Route element={<Layout />}>
           <Route path="/diagnose" element={<Diagnose />} />
           <Route path="/scan" element={<ScanUnit />} />
